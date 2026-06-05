@@ -6,7 +6,7 @@ Follow the TDD cycle strictly: write failing test -> verify -> write minimal imp
 - [x] **Task 1: Cargo Configuration**
   - Add `tiny-skia` and `windows` with features (`Win32_Foundation`, `Win32_UI_WindowsAndMessaging`, `Win32_UI_Input_KeyboardAndMouse`, `Win32_Graphics_Dwm`, `Win32_UI_Accessibility`, `Win32_System_LibraryLoader`) to `Cargo.toml`.
   - Verify compile with `cargo check`.
-- [ ] **Task 2: Abstraction Traits & Mocks**
+- [x] **Task 2: Abstraction Traits & Mocks**
   - Create `src/traits.rs`.
   - Write test verifying mock structures compile and record state mutations.
   - Implement `WindowManager` trait.
