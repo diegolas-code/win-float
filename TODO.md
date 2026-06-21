@@ -34,7 +34,7 @@ Follow the TDD cycle strictly: write failing test -> verify -> write minimal imp
   - Implement HUD rendering (percentage text and slider bar), pin icon, and outline border.
 
 ## Phase 4: Win32 Integrations
-- [ ] **Task 8: Win32 Window Manager Wrapper (`src/platform/window.rs`)**
+- [x] **Task 8: Win32 Window Manager Wrapper (`src/platform/window.rs`)**
   - Write tests asserting safety checks on null or invalid window handles.
   - Implement `LiveWindowManager` using `windows` crate wrappers for layering and topmost state adjustments.
 - [ ] **Task 9: Low-Level Input Hook Wrapper (`src/platform/hook.rs`)**
