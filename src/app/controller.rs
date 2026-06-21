@@ -7,6 +7,7 @@ use crate::app::tracker::{WM_TACTILE_WINDOW_MOVED, WM_TACTILE_WINDOW_CLOSED, WM_
 use windows::Win32::Foundation::{HWND, RECT, BOOL};
 use windows::Win32::UI::WindowsAndMessaging::{
     GetWindowRect, GetMessageW, MSG, WM_HOTKEY, WM_TIMER, SetTimer, KillTimer,
+    GetAncestor, GetWindow, GA_ROOTOWNER, GW_OWNER,
 };
 use windows::Win32::UI::Input::KeyboardAndMouse::{
     RegisterHotKey, UnregisterHotKey, MOD_CONTROL, MOD_WIN, MOD_SHIFT, VK_F11,
@@ -41,8 +42,10 @@ fn get_window_rect_helper(hwnd: HWND) -> Result<crate::hud_layout::Rect, String>
 
 #[cfg(test)]
 static TEST_ROOT_ANCESTORS: Mutex<Option<HashMap<isize, isize>>> = Mutex::new(None);
+#[cfg(test)]
+static TEST_OWNERS: Mutex<Option<HashMap<isize, isize>>> = Mutex::new(None);
 
-fn get_root_window(hwnd: HWND) -> HWND {
+fn get_root_window(mut hwnd: HWND) -> HWND {
     #[cfg(test)]
     {
         if let Some(ref map) = *TEST_ROOT_ANCESTORS.lock().unwrap() {
@@ -55,14 +58,31 @@ fn get_root_window(hwnd: HWND) -> HWND {
     if hwnd.0 == 0 {
         return hwnd;
     }
+
     unsafe {
-        use windows::Win32::UI::WindowsAndMessaging::{GetAncestor, GA_ROOTOWNER};
-        let root = GetAncestor(hwnd, GA_ROOTOWNER);
-        if root.0 != 0 {
-            root
-        } else {
-            hwnd
+        loop {
+            #[cfg(test)]
+            {
+                if let Some(ref map) = *TEST_OWNERS.lock().unwrap() {
+                    if let Some(&owner) = map.get(&hwnd.0) {
+                        hwnd = HWND(owner);
+                        continue;
+                    }
+                }
+            }
+
+            let root = GetAncestor(hwnd, GA_ROOTOWNER);
+            if root.0 == 0 || root == hwnd {
+                let owner = GetWindow(hwnd, GW_OWNER);
+                if owner.0 == 0 {
+                    break;
+                }
+                hwnd = owner;
+            } else {
+                hwnd = root;
+            }
         }
+        hwnd
     }
 }
 
@@ -1095,6 +1115,51 @@ mod tests {
 
         // Clean up
         *TEST_ROOT_ANCESTORS.lock().unwrap() = None;
+    }
+
+    #[test]
+    fn test_focus_changed_identifies_owned_popup_focus_as_focused() {
+        let wm = MockWindowManager::default();
+        let target = HWND(12345);
+        let popup = HWND(77777);
+        
+        *wm.active_window.lock().unwrap() = target;
+
+        let hook = MockInputHook;
+        let om = MockOverlayManager::default();
+        let tracker = MockEventTracker::default();
+        let mut controller = AppController::new(wm, hook, om, tracker).unwrap();
+
+        // Pin target window
+        controller.handle_hotkey(HOTKEY_TOPMOST_ID).unwrap();
+        let _overlay_hwnd = controller.pinned_overlays.get(&target.0).copied().unwrap();
+
+        // 1. Move focus to HWND(999) -> unfocused
+        controller.handle_focus_changed(target, HWND(999)).unwrap();
+        assert_eq!(controller.overlay_focus_states.get(&target.0), Some(&false));
+
+        // Setup mock owner relationship: popup's owner is target
+        {
+            let mut map = HashMap::new();
+            map.insert(77777, 12345);
+            *TEST_OWNERS.lock().unwrap() = Some(map);
+        }
+
+        // Clear last_pixels
+        *controller.overlay_manager.last_pixels.lock().unwrap() = None;
+
+        // 2. Focus moves to popup window. It must resolve owner to target and redraw focused outline!
+        controller.handle_focus_changed(target, popup).unwrap();
+
+        // Assert focus cache became true
+        assert_eq!(controller.overlay_focus_states.get(&target.0), Some(&true));
+        
+        // Assert B did redraw
+        assert!(controller.overlay_manager.last_pixels.lock().unwrap().is_some(),
+            "Overlay should redraw when owned popup window gains focus");
+
+        // Clean up
+        *TEST_OWNERS.lock().unwrap() = None;
     }
 }
 

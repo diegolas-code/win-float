@@ -4,7 +4,7 @@ This document tracks the project state at the end of each development session. I
 
 ## 1. Last Updated
 - **Date:** 2026-06-21
-- **Task Reference:** Child Window Ancestor Focus Chain Resolution
+- **Task Reference:** Overlay Mouse Activation and Owner Chain Walking
 
 ## 2. Session Achievements
 - Modified `update_pinned_overlay_graphics` in `src/app/controller.rs` to render the focused active accent outline border with a thickness of 3.0px (1px thicker than the original 2.0px).
@@ -15,10 +15,12 @@ This document tracks the project state at the end of each development session. I
 - **Window Moved & Focus Redraw Cache:** Cached window rectangles and focus states in `overlay_rects` and `overlay_focus_states` respectively. Skip costly repaints if window size is unchanged or if focus state hasn't changed.
 - **Focus Blinking Fix:** Modified `update_pinned_overlay_graphics` to use the cached focus state when `new_fg_hwnd` is `None` (during geometry updates) instead of querying the racey `GetForegroundWindow()`, completely resolving the bug where focus outlines would blink and disappear.
 - **Child Window Ancestor Fix:** Resolved top-level root window parent (`GetAncestor` with `GA_ROOTOWNER`) for any newly focused window handle to ensure outline stays visible when focus shifts to child controls inside target windows.
-- All 38 unit and integration tests compile and pass successfully.
+- **Mouse Activation Interception:** Handled `WM_MOUSEACTIVATE` in `overlay_wnd_proc` returning `MA_NOACTIVATE` (3) to prevent the overlay window itself from stealing activation/focus.
+- **Popup/Owner Walking:** Implemented manual owner chain walking using `GetWindow(hwnd, GW_OWNER)` inside `get_root_window` to ensure popup and owned windows climb back to their top-level parent window.
+- All 39 unit and integration tests compile and pass successfully.
 
 ## 3. Current Task State
-- **Active Task:** Outline rendering, performance caching, and child window focus resolution complete.
+- **Active Task:** Mouse activation and owner climbing complete.
 - **Status:** Uncommitted changes ready to be committed on branch `feature/always-on-top-accent-outline`.
 
 ## 4. Pending / Next Steps
@@ -27,4 +29,4 @@ This document tracks the project state at the end of each development session. I
 
 ## 5. System State & Compile Verification
 - **Code compiles:** Yes (`cargo check` and `cargo build` successful)
-- **Tests passing:** Yes (`cargo test` successful: 38 tests passed)
+- **Tests passing:** Yes (`cargo test` successful: 39 tests passed)

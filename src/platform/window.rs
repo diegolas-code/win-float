@@ -8,7 +8,7 @@ use windows::Win32::UI::WindowsAndMessaging::{
     CreateWindowExW, DestroyWindow, UpdateLayeredWindow, RegisterClassExW,
     DefWindowProcW, WNDCLASSEXW, CS_HREDRAW, CS_VREDRAW, WS_EX_TRANSPARENT,
     WS_EX_NOACTIVATE, WS_POPUP, ULW_ALPHA, HMENU, GetLayeredWindowAttributes,
-    SWP_NOZORDER, SWP_FRAMECHANGED, SWP_NOACTIVATE,
+    SWP_NOZORDER, SWP_FRAMECHANGED, SWP_NOACTIVATE, WM_MOUSEACTIVATE,
 };
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::Graphics::Gdi::{
@@ -23,6 +23,10 @@ unsafe extern "system" fn overlay_wnd_proc(
     wparam: WPARAM,
     lparam: LPARAM,
 ) -> LRESULT {
+    if msg == WM_MOUSEACTIVATE {
+        // Return MA_NOACTIVATE (3) to prevent the overlay from stealing focus/activation
+        return LRESULT(3);
+    }
     unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) }
 }
 

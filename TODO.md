@@ -79,3 +79,7 @@ Follow the TDD cycle strictly: write failing test -> verify -> write minimal imp
   - Use `GetAncestor(hwnd, GA_ROOTOWNER)` to resolve top-level root window parent of focused window handle.
   - Correctly identify parent window focus when child elements (like browser canvas, editor controls, etc.) are focused.
   - Verify with unit tests.
+- [x] **Task 20: Prevent overlay window from stealing focus on click/interaction**
+  - Handle `WM_MOUSEACTIVATE` in `overlay_wnd_proc` and return `MA_NOACTIVATE` (3).
+  - Climb owner window relationships inside `get_root_window` to correctly resolve owned popups/overlays.
+  - Verify with unit tests.
