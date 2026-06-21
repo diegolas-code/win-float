@@ -4,6 +4,7 @@ pub mod hud_layout;
 pub mod state_machine;
 pub mod ui;
 pub mod platform;
+pub mod app;
 
 fn main() {
     println!("Hello, world!");

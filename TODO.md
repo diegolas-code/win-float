@@ -42,7 +42,7 @@ Follow the TDD cycle strictly: write failing test -> verify -> write minimal imp
   - Implement keyboard capture using Win32 low-level hook (`WH_KEYBOARD_LL`).
 
 ## Phase 5: App Controller & Event Loop
-- [ ] **Task 10: Event Tracker (`src/app/tracker.rs`)**
+- [x] **Task 10: Event Tracker (`src/app/tracker.rs`)**
   - Implement `WindowEventTracker` using `SetWinEventHook` to handle `EVENT_OBJECT_LOCATIONCHANGE` and `EVENT_OBJECT_DESTROY`.
 - [ ] **Task 11: Main App Loop & Controller (`src/app/controller.rs`)**
   - Integrate all components inside `AppController` running `GetMessageW` loop.
