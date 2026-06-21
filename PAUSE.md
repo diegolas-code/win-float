@@ -4,22 +4,22 @@ This document tracks the project state at the end of each development session. I
 
 ## 1. Last Updated
 - **Date:** 2026-06-21
-- **Task Reference:** Phase 3, Task 6 Complete (Pixmap Overlay Canvas)
+- **Task Reference:** Phase 3 Complete (Skia UI Renderer Core)
 
 ## 2. Session Achievements
 - Switched to working branch `feature/transparency-math`.
-- Implemented core mathematical engines and logic (Phase 2 completed).
-- Began Phase 3 (Skia UI Renderer Core) by implementing [src/ui/overlay.rs](file:///C:/Users/Diegolas/Code/rust/WIN-FLOAT/win-float/src/ui/overlay.rs).
-- Wrapped `tiny-skia::Pixmap` in a helper [Canvas](file:///C:/Users/Diegolas/Code/rust/WIN-FLOAT/win-float/src/ui/overlay.rs#L3-L31) structure with test coverage checking valid bounds allocation and pixel-level clearing.
-- Checked off Task 6 in `TODO.md` and verified all 16 tests passing in `cargo test`.
+- Completed Phase 2 (Core Logics) and Phase 3 (Skia UI Renderer Core).
+- Added `ab_glyph` crate as a dependency in `Cargo.toml`.
+- Implemented `src/ui/draw.rs` with custom pixel alpha-blending, rendering calculations for a glassy HUD background, accent color slider track filling, accent outline border stroking, pinhead shapes, and centring text characters on the canvas.
+- Verified compilation and test statuses (zero warnings, all 19 tests passing).
 
 ## 3. Current Task State
-- **Active Task:** Phase 3, Task 6 complete.
-- **Status:** Pixmap Overlay Canvas wrapper completed and fully tested.
+- **Active Task:** Phase 3 complete.
+- **Status:** Skia UI renderer canvas allocations, drawing shapes, borders, pins, and fonts implemented and tested.
 
 ## 4. Pending / Next Steps
-- Continue **Phase 3 (Skia UI Renderer Core)** with **Task 7: UI Drawing Helpers** (`src/ui/draw.rs`).
+- Begin **Phase 4 (Win32 Integrations)** starting with **Task 8: Win32 Window Manager Wrapper** (`src/platform/window.rs`).
 
 ## 5. System State & Compile Verification
 - **Code compiles:** Yes (`cargo check` successful)
-- **Tests passing:** Yes (`cargo test` successful: 16 tests passed)
+- **Tests passing:** Yes (`cargo test` successful: 19 tests passed)

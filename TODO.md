@@ -29,7 +29,7 @@ Follow the TDD cycle strictly: write failing test -> verify -> write minimal imp
 - [x] **Task 6: Pixmap Overlay Canvas (`src/ui/overlay.rs`)**
   - Write failing tests verifying canvas allocation and pixel boundaries.
   - Implement `Canvas` wrapper around `tiny-skia::Pixmap`.
-- [ ] **Task 7: UI Drawing Helpers (`src/ui/draw.rs`)**
+- [x] **Task 7: UI Drawing Helpers (`src/ui/draw.rs`)**
   - Write tests or validation scripts for drawing a progress bar and text markers into Pixmaps.
   - Implement HUD rendering (percentage text and slider bar), pin icon, and outline border.
 

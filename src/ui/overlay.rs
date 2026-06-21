@@ -29,6 +29,14 @@ impl Canvas {
     pub fn pixels(&self) -> &[u8] {
         self.pixmap.data()
     }
+
+    pub fn pixmap(&self) -> &Pixmap {
+        &self.pixmap
+    }
+
+    pub fn pixmap_mut(&mut self) -> &mut Pixmap {
+        &mut self.pixmap
+    }
 }
 
 #[cfg(test)]
