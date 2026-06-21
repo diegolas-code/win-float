@@ -37,7 +37,7 @@ Follow the TDD cycle strictly: write failing test -> verify -> write minimal imp
 - [x] **Task 8: Win32 Window Manager Wrapper (`src/platform/window.rs`)**
   - Write tests asserting safety checks on null or invalid window handles.
   - Implement `LiveWindowManager` using `windows` crate wrappers for layering and topmost state adjustments.
-- [ ] **Task 9: Low-Level Input Hook Wrapper (`src/platform/hook.rs`)**
+- [x] **Task 9: Low-Level Input Hook Wrapper (`src/platform/hook.rs`)**
   - Write tests verifying keyboard hook states (hooked vs unhooked).
   - Implement keyboard capture using Win32 low-level hook (`WH_KEYBOARD_LL`).
 
