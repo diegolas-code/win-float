@@ -4,23 +4,24 @@ This document tracks the project state at the end of each development session. I
 
 ## 1. Last Updated
 - **Date:** 2026-06-21
-- **Task Reference:** Phase 5, Task 11 Complete (App Controller & Overlay Manager)
+- **Task Reference:** Phase 5 Complete (Task 12 Complete - Application Entry)
 
 ## 2. Session Achievements
-- Switched to working branch `feature/app-controller` checked out from `dev`.
-- Implemented `AppController` in `src/app/controller.rs` to process Win32 message events and state machine transitions.
-- Implemented `LiveOverlayManager` in `src/platform/window.rs` using `CreateWindowExW` and `UpdateLayeredWindow` swizzling RGBA Skia pixels to BGRA Windows DIB pixels.
-- Added `is_always_on_top` query method to trait and implementations to resolve mocking issues.
-- Added new lifecycle unit tests verifying actual window and overlay creation/updates.
+- Switched to working branch `feature/app-entry` checked out from `dev`.
+- Connected all manager components (GDI Overlay Manager, Live Window Manager, Event Tracker, Keyboard Input Hook) inside the entry point `main()`.
+- Implemented a message-only background message window (`HWND_MESSAGE`) in `src/main.rs` to route low-level system keyboard events to the thread-level queue.
+- Configured `#![windows_subsystem = "windows"]` to prevent an active console terminal pop-up when launched.
+- Verified compilation and execution under release profile (`cargo build --release` passes successfully).
 - Verified test outcomes with `cargo test` (all 28 tests passing with no compiler warnings).
 
 ## 3. Current Task State
-- **Active Task:** Phase 5, Task 11 complete.
-- **Status:** Message loop, controller state transitions, and live overlay windows management implemented and verified.
+- **Active Task:** Phase 5 completed. All checklist items are done.
+- **Status:** Application is user-testable and ready for production testing.
 
 ## 4. Pending / Next Steps
-- Continue with **Phase 5, Task 12: Application Entry** (`src/main.rs`). Connect all traits and manager layers, register global hotkeys, configure the application entry point, run end-to-end user tests.
+- Commit changes on `feature/app-entry`, merge to `dev`, merge `dev` to `master`, and push changes to remote.
+- Perform user-acceptance testing on Windows systems.
 
 ## 5. System State & Compile Verification
-- **Code compiles:** Yes (`cargo check` successful)
+- **Code compiles:** Yes (`cargo check` and `cargo build --release` successful)
 - **Tests passing:** Yes (`cargo test` successful: 28 tests passed)
