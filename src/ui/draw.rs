@@ -159,8 +159,13 @@ pub fn draw_pin(
     let height = canvas.height() as f32;
     let pixmap = canvas.pixmap_mut();
 
-    let cx = width / 2.0; // 12.0
-    let cy = height / 2.0; // 12.0
+    // Base coordinates are designed for a 24x24 canvas
+    let cx = 12.0;
+    let cy = 12.0;
+
+    let scale_x = width / 24.0;
+    let scale_y = height / 24.0;
+    let global_transform = Transform::from_scale(scale_x, scale_y);
 
     // 1. Draw Wings (drawn behind the body)
     // Left Wing (translucent light blue)
@@ -181,10 +186,10 @@ pub fn draw_pin(
     wing_paint.anti_alias = true;
 
     if let Some(ref path) = left_wing_path {
-        pixmap.fill_path(path, &wing_paint, tiny_skia::FillRule::Winding, Transform::identity(), None);
+        pixmap.fill_path(path, &wing_paint, tiny_skia::FillRule::Winding, global_transform, None);
     }
     if let Some(ref path) = right_wing_path {
-        pixmap.fill_path(path, &wing_paint, tiny_skia::FillRule::Winding, Transform::identity(), None);
+        pixmap.fill_path(path, &wing_paint, tiny_skia::FillRule::Winding, global_transform, None);
     }
 
     // 2. Draw Stinger (black triangle pointing down)
@@ -201,7 +206,7 @@ pub fn draw_pin(
     black_paint.anti_alias = true;
 
     if let Some(ref path) = stinger_path {
-        pixmap.fill_path(path, &black_paint, tiny_skia::FillRule::Winding, Transform::identity(), None);
+        pixmap.fill_path(path, &black_paint, tiny_skia::FillRule::Winding, global_transform, None);
     }
 
     // 3. Draw Body (yellow oval using circle + vertical scaling)
@@ -216,7 +221,8 @@ pub fn draw_pin(
 
     if let Some(ref path) = body_path {
         let t = Transform::from_scale(0.85, 1.15).post_translate(cx * (1.0 - 0.85), (cy + 1.0) * (1.0 - 1.15));
-        pixmap.fill_path(path, &body_paint, tiny_skia::FillRule::Winding, t, None);
+        let t_scaled = t.post_concat(global_transform);
+        pixmap.fill_path(path, &body_paint, tiny_skia::FillRule::Winding, t_scaled, None);
     }
 
     // 4. Draw Stripes (dark horizontal bands across the body)
@@ -224,19 +230,19 @@ pub fn draw_pin(
     let stripe1_rect = SkiaRect::from_ltrb(cx - 4.2, cy - 2.0, cx + 4.2, cy - 0.5)
         .ok_or_else(|| "Invalid stripe dimensions".to_string())?;
     let stripe1_path = PathBuilder::from_rect(stripe1_rect);
-    pixmap.fill_path(&stripe1_path, &black_paint, tiny_skia::FillRule::Winding, Transform::identity(), None);
+    pixmap.fill_path(&stripe1_path, &black_paint, tiny_skia::FillRule::Winding, global_transform, None);
 
     // Stripe 2
     let stripe2_rect = SkiaRect::from_ltrb(cx - 4.8, cy + 1.0, cx + 4.8, cy + 2.5)
         .ok_or_else(|| "Invalid stripe dimensions".to_string())?;
     let stripe2_path = PathBuilder::from_rect(stripe2_rect);
-    pixmap.fill_path(&stripe2_path, &black_paint, tiny_skia::FillRule::Winding, Transform::identity(), None);
+    pixmap.fill_path(&stripe2_path, &black_paint, tiny_skia::FillRule::Winding, global_transform, None);
 
     // Stripe 3
     let stripe3_rect = SkiaRect::from_ltrb(cx - 4.0, cy + 4.0, cx + 4.0, cy + 5.0)
         .ok_or_else(|| "Invalid stripe dimensions".to_string())?;
     let stripe3_path = PathBuilder::from_rect(stripe3_rect);
-    pixmap.fill_path(&stripe3_path, &black_paint, tiny_skia::FillRule::Winding, Transform::identity(), None);
+    pixmap.fill_path(&stripe3_path, &black_paint, tiny_skia::FillRule::Winding, global_transform, None);
 
     // 5. Draw Head (black circle)
     let head_path = {
@@ -245,7 +251,7 @@ pub fn draw_pin(
         pb.finish()
     };
     if let Some(ref path) = head_path {
-        pixmap.fill_path(path, &black_paint, tiny_skia::FillRule::Winding, Transform::identity(), None);
+        pixmap.fill_path(path, &black_paint, tiny_skia::FillRule::Winding, global_transform, None);
     }
 
     // 6. Draw Antennae (small black strokes)
@@ -268,10 +274,10 @@ pub fn draw_pin(
     };
 
     if let Some(ref path) = antenna_left {
-        pixmap.stroke_path(path, &black_paint, &stroke, Transform::identity(), None);
+        pixmap.stroke_path(path, &black_paint, &stroke, global_transform, None);
     }
     if let Some(ref path) = antenna_right {
-        pixmap.stroke_path(path, &black_paint, &stroke, Transform::identity(), None);
+        pixmap.stroke_path(path, &black_paint, &stroke, global_transform, None);
     }
 
     Ok(())

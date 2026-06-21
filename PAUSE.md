@@ -4,23 +4,23 @@ This document tracks the project state at the end of each development session. I
 
 ## 1. Last Updated
 - **Date:** 2026-06-21
-- **Task Reference:** Bugfixes and Feature Adjustments Complete (Z-Order, Bee Icon, Transparency Clamp, Ctrl+C handling)
+- **Task Reference:** Final Polish Complete (Task 12 Polish Complete - 32x32 Bee Icon & Graceful Ctrl+C Message Loop Exit)
 
 ## 2. Session Achievements
-- Switched to working branch `feature/fix-issues` checked out from `dev`.
-- Resolved the Z-order visibility bug by establishing Win32 owner-owned relationship between target windows and overlays (parent `HWND` parameter in `create_overlay`).
-- Hand-drawn a premium vector bee icon (🐝) inside `src/ui/draw.rs` using Skia paths.
-- Reduced transition increments from 5% to 2% for smoother scrolling and clamped transparency minimum to 60%.
-- Integrated console Ctrl+C event listener mapping (`SetConsoleCtrlHandler`) inside `src/main.rs`.
+- Switched to working branch `feature/polish-app` checked out from `dev`.
+- Adjusted the bee pin overlay dimensions from 24x24 to 32x32 inside `src/app/controller.rs`.
+- Configured dynamic vector scaling using `Transform::from_scale` in `draw_pin` inside `src/ui/draw.rs` to render the bee 🐝 cleanly inside the 32x32 boundaries.
+- Removed `#![windows_subsystem = "windows"]` to run as a console application, allowing command prompts to capture and send console signals.
+- Configured console `CTRL_C_EVENT` callback to post `WM_QUIT` using `PostQuitMessage(0)` to cleanly terminate the message loop and execute all resource drop destructors.
 - Verified test outcomes with `cargo test` (all 28 tests passing).
 - Verified production build compile with `cargo build --release`.
 
 ## 3. Current Task State
-- **Active Task:** Bugfixes and Feature Adjustments complete.
-- **Status:** All core implementation tasks and fixes are fully complete.
+- **Active Task:** Final Polish complete.
+- **Status:** All core implementation tasks, bugfixes, and feature polish adjustments are fully completed.
 
 ## 4. Pending / Next Steps
-- Commit changes to `feature/fix-issues`, merge to `dev` (and then `master`), and push to GitHub repository.
+- Commit changes to `feature/polish-app`, merge to `dev` (and then `master`), and push to GitHub repository.
 
 ## 5. System State & Compile Verification
 - **Code compiles:** Yes (`cargo check` and `cargo build --release` successful)

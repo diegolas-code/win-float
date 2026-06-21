@@ -1,4 +1,3 @@
-#![windows_subsystem = "windows"]
 
 pub mod traits;
 pub mod transparency_calc;
@@ -14,17 +13,20 @@ use app::tracker::WindowEventTracker;
 use app::controller::AppController;
 
 use windows::core::w;
-use windows::Win32::Foundation::{HWND, HINSTANCE, LRESULT, WPARAM, LPARAM, BOOL, FALSE};
+use windows::Win32::Foundation::{HWND, HINSTANCE, LRESULT, WPARAM, LPARAM, BOOL, FALSE, TRUE};
 use windows::Win32::UI::WindowsAndMessaging::{
     RegisterClassExW, CreateWindowExW, DefWindowProcW, WNDCLASSEXW, CS_HREDRAW, CS_VREDRAW,
-    HWND_MESSAGE, WS_POPUP, HMENU,
+    HWND_MESSAGE, WS_POPUP, HMENU, PostQuitMessage,
 };
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::System::Console::{SetConsoleCtrlHandler, CTRL_C_EVENT};
 
 unsafe extern "system" fn ctrl_handler(ctrl_type: u32) -> BOOL {
     if ctrl_type == CTRL_C_EVENT {
-        std::process::exit(0);
+        unsafe {
+            PostQuitMessage(0);
+        }
+        return TRUE;
     }
     FALSE
 }

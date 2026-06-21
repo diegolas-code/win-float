@@ -155,8 +155,8 @@ where
 
                 if new_state {
                     let rect = get_window_rect_helper(active).unwrap_or(crate::hud_layout::Rect::new(0, 0, 800, 600));
-                    let pin_w = 24;
-                    let pin_h = 24;
+                    let pin_w = 32;
+                    let pin_h = 32;
                     let (px, py) = crate::hud_layout::calculate_pin_position(rect, pin_w, pin_h, 10, 10);
                     let overlay = self.overlay_manager.create_overlay(active, px, py, pin_w, pin_h)?;
 
@@ -272,8 +272,8 @@ where
                 let (hx, hy) = crate::hud_layout::calculate_hud_position(rect, hud_w, hud_h);
                 (hx, hy, hud_w, hud_h)
             } else {
-                let pin_w = 24;
-                let pin_h = 24;
+                let pin_w = 32;
+                let pin_h = 32;
                 let (px, py) = crate::hud_layout::calculate_pin_position(rect, pin_w, pin_h, 10, 10);
                 (px, py, pin_w, pin_h)
             };
