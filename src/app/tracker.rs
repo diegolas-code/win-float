@@ -154,6 +154,7 @@ unsafe extern "system" fn win_event_proc(
 ) {
     if event == EVENT_SYSTEM_FOREGROUND {
         if hwnd.0 != 0 {
+            println!("[Win-Float] [Debug] win_event_proc EVENT_SYSTEM_FOREGROUND: hwnd = 0x{:X}", hwnd.0);
             let map_guard = match TRACKED_WINDOWS.lock() {
                 Ok(guard) => guard,
                 Err(_) => return,

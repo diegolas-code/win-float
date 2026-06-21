@@ -83,3 +83,7 @@ Follow the TDD cycle strictly: write failing test -> verify -> write minimal imp
   - Handle `WM_MOUSEACTIVATE` in `overlay_wnd_proc` and return `MA_NOACTIVATE` (3).
   - Climb owner window relationships inside `get_root_window` to correctly resolve owned popups/overlays.
   - Verify with unit tests.
+- [x] **Task 21: Filter transient staging and switcher window handles during focus events**
+  - Ignore OS focus-staging and task-switching window classes (`ForegroundStaging`, `XamlExplorerHostIslandWindow`, `MultitaskingViewFrame`) when tracking foreground window changes.
+  - Verify with unit tests.
+

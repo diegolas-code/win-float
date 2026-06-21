@@ -44,6 +44,32 @@ fn get_window_rect_helper(hwnd: HWND) -> Result<crate::hud_layout::Rect, String>
 static TEST_ROOT_ANCESTORS: Mutex<Option<HashMap<isize, isize>>> = Mutex::new(None);
 #[cfg(test)]
 static TEST_OWNERS: Mutex<Option<HashMap<isize, isize>>> = Mutex::new(None);
+#[cfg(test)]
+static TEST_CLASS_NAMES: Mutex<Option<HashMap<isize, String>>> = Mutex::new(None);
+
+fn get_window_class_name(hwnd: HWND) -> String {
+    #[cfg(test)]
+    {
+        if let Some(ref map) = *TEST_CLASS_NAMES.lock().unwrap() {
+            if let Some(name) = map.get(&hwnd.0) {
+                return name.clone();
+            }
+        }
+    }
+
+    if hwnd.0 == 0 {
+        return String::new();
+    }
+
+    let mut class_name = [0u16; 256];
+    let len = unsafe {
+        windows::Win32::UI::WindowsAndMessaging::GetClassNameW(hwnd, &mut class_name)
+    };
+    if len <= 0 {
+        return String::new();
+    }
+    String::from_utf16_lossy(&class_name[..len as usize])
+}
 
 fn get_root_window(mut hwnd: HWND) -> HWND {
     #[cfg(test)]
@@ -602,10 +628,19 @@ where
     }
 
     pub fn handle_focus_changed(&mut self, target_hwnd: HWND, new_fg_hwnd: HWND) -> Result<(), String> {
+        let class_name = get_window_class_name(new_fg_hwnd);
+        if class_name == "ForegroundStaging" || class_name == "XamlExplorerHostIslandWindow" || class_name == "MultitaskingViewFrame" {
+            // Ignore transient focus transitions
+            return Ok(());
+        }
+
         if let Some(&overlay) = self.pinned_overlays.get(&target_hwnd.0) {
             let root_fg = get_root_window(new_fg_hwnd);
-            let is_focused = target_hwnd == root_fg;
+            let is_focused = target_hwnd == root_fg || new_fg_hwnd == overlay || root_fg == overlay;
             
+            println!("[Win-Float] [Debug] handle_focus_changed: target = 0x{:X}, new_fg = 0x{:X}, root_fg = 0x{:X}, overlay = 0x{:X}, is_focused = {}",
+                target_hwnd.0, new_fg_hwnd.0, root_fg.0, overlay.0, is_focused);
+
             let last_focus = self.overlay_focus_states.get(&target_hwnd.0).copied();
             if last_focus == Some(is_focused) {
                 // Focus state did not change. Skip redraw.
@@ -614,7 +649,7 @@ where
 
             self.overlay_focus_states.insert(target_hwnd.0, is_focused);
             let rect = get_window_rect_helper(target_hwnd).unwrap_or(crate::hud_layout::Rect::new(0, 0, 800, 600));
-            self.update_pinned_overlay_graphics(target_hwnd, overlay, rect, Some(root_fg))?;
+            self.update_pinned_overlay_graphics(target_hwnd, overlay, rect, Some(new_fg_hwnd))?;
         }
         Ok(())
     }
@@ -633,15 +668,32 @@ where
         }
 
         let is_focused = if let Some(fg) = new_fg_hwnd {
-            let root_fg = get_root_window(fg);
-            root_fg == target_hwnd
+            let class_name = get_window_class_name(fg);
+            if class_name == "ForegroundStaging" || class_name == "XamlExplorerHostIslandWindow" || class_name == "MultitaskingViewFrame" {
+                self.overlay_focus_states.get(&target_hwnd.0).copied().unwrap_or(false)
+            } else {
+                let root_fg = get_root_window(fg);
+                root_fg == target_hwnd || fg == overlay_hwnd || root_fg == overlay_hwnd
+            }
         } else {
             self.overlay_focus_states.get(&target_hwnd.0).copied().unwrap_or_else(|| {
                 self.window_manager.get_active_window()
-                    .map(|act| get_root_window(act) == target_hwnd)
+                    .map(|act| {
+                        let class_name = get_window_class_name(act);
+                        if class_name == "ForegroundStaging" || class_name == "XamlExplorerHostIslandWindow" || class_name == "MultitaskingViewFrame" {
+                            false
+                        } else {
+                            let root_act = get_root_window(act);
+                            root_act == target_hwnd || act == overlay_hwnd || root_act == overlay_hwnd
+                        }
+                    })
                     .unwrap_or(false)
             })
         };
+
+        println!("[Win-Float] [Debug] update_graphics: target = 0x{:X}, is_focused = {}, cache_focus = {:?}",
+            target_hwnd.0, is_focused, self.overlay_focus_states.get(&target_hwnd.0));
+
         self.overlay_focus_states.insert(target_hwnd.0, is_focused);
 
         let mut canvas = crate::ui::overlay::Canvas::new(width as u32, height as u32)?;
@@ -1160,6 +1212,57 @@ mod tests {
 
         // Clean up
         *TEST_OWNERS.lock().unwrap() = None;
+    }
+
+    #[test]
+    fn test_focus_changed_ignores_transient_windows() {
+        let wm = MockWindowManager::default();
+        let target = HWND(12345);
+        let transient_staging = HWND(88888);
+        let transient_switcher = HWND(99999);
+        let normal_window = HWND(77777);
+
+        *wm.active_window.lock().unwrap() = target;
+
+        let hook = MockInputHook;
+        let om = MockOverlayManager::default();
+        let tracker = MockEventTracker::default();
+        let mut controller = AppController::new(wm, hook, om, tracker).unwrap();
+
+        // Pin target window (starts focused)
+        controller.handle_hotkey(HOTKEY_TOPMOST_ID).unwrap();
+        assert_eq!(controller.overlay_focus_states.get(&target.0), Some(&true));
+
+        // Set up mock class names
+        {
+            let mut map = HashMap::new();
+            map.insert(88888, "ForegroundStaging".to_string());
+            map.insert(99999, "XamlExplorerHostIslandWindow".to_string());
+            map.insert(77777, "NormalWindowClass".to_string());
+            *TEST_CLASS_NAMES.lock().unwrap() = Some(map);
+        }
+
+        // Clear last_pixels
+        *controller.overlay_manager.last_pixels.lock().unwrap() = None;
+
+        // 1. Move focus to ForegroundStaging. It should be ignored, and focus state should remain true!
+        controller.handle_focus_changed(target, transient_staging).unwrap();
+        assert_eq!(controller.overlay_focus_states.get(&target.0), Some(&true));
+        assert!(controller.overlay_manager.last_pixels.lock().unwrap().is_none(),
+            "Overlay should not redraw when transient window gets focus");
+
+        // 2. Move focus to XamlExplorerHostIslandWindow. It should be ignored, and focus state should remain true!
+        controller.handle_focus_changed(target, transient_switcher).unwrap();
+        assert_eq!(controller.overlay_focus_states.get(&target.0), Some(&true));
+
+        // 3. Move focus to a normal window. It should NOT be ignored, and focus state should become false!
+        controller.handle_focus_changed(target, normal_window).unwrap();
+        assert_eq!(controller.overlay_focus_states.get(&target.0), Some(&false));
+        assert!(controller.overlay_manager.last_pixels.lock().unwrap().is_some(),
+            "Overlay should redraw when normal window gets focus");
+
+        // Clean up
+        *TEST_CLASS_NAMES.lock().unwrap() = None;
     }
 }
 
