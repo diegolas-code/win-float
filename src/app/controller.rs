@@ -163,7 +163,8 @@ where
                     let _ = self.handle_window_closed_event(target_hwnd);
                 } else if msg.message == WM_TACTILE_FOCUS_CHANGED {
                     let target_hwnd = HWND(msg.wParam.0 as isize);
-                    let _ = self.handle_focus_changed(target_hwnd);
+                    let new_fg_hwnd = HWND(msg.lParam.0 as isize);
+                    let _ = self.handle_focus_changed(target_hwnd, new_fg_hwnd);
                 }
 
                 use windows::Win32::UI::WindowsAndMessaging::{TranslateMessage, DispatchMessageW};
@@ -195,7 +196,7 @@ where
                     let height = rect.height() + 8;
                     let overlay = self.overlay_manager.create_overlay(active, rect.left, rect.top - 8, width, height)?;
 
-                    self.update_pinned_overlay_graphics(active, overlay, rect)?;
+                    self.update_pinned_overlay_graphics(active, overlay, rect, None)?;
                     self.event_tracker.start_tracking(active, overlay)?;
                     self.pinned_overlays.insert(active.0, overlay);
                     println!("[Win-Float] [Info] Pinned window HWND 0x{:X}. Created overlay HWND 0x{:X} spanning the entire window.", active.0, overlay.0);
@@ -490,7 +491,7 @@ where
             }
 
             if !is_modal {
-                self.update_pinned_overlay_graphics(target_hwnd, overlay, rect)?;
+                self.update_pinned_overlay_graphics(target_hwnd, overlay, rect, None)?;
             }
 
             println!("[Win-Float] [Info] Tracked window HWND 0x{:X} moved. Repositioning overlay HWND 0x{:X} to coordinates (x: {}, y: {}).", target_hwnd.0, overlay.0, ox, oy);
@@ -518,10 +519,10 @@ where
         Ok(())
     }
 
-    pub fn handle_focus_changed(&mut self, target_hwnd: HWND) -> Result<(), String> {
+    pub fn handle_focus_changed(&mut self, target_hwnd: HWND, new_fg_hwnd: HWND) -> Result<(), String> {
         if let Some(&overlay) = self.pinned_overlays.get(&target_hwnd.0) {
             let rect = get_window_rect_helper(target_hwnd).unwrap_or(crate::hud_layout::Rect::new(0, 0, 800, 600));
-            self.update_pinned_overlay_graphics(target_hwnd, overlay, rect)?;
+            self.update_pinned_overlay_graphics(target_hwnd, overlay, rect, Some(new_fg_hwnd))?;
         }
         Ok(())
     }
@@ -531,6 +532,7 @@ where
         target_hwnd: HWND,
         overlay_hwnd: HWND,
         rect: crate::hud_layout::Rect,
+        new_fg_hwnd: Option<HWND>,
     ) -> Result<(), String> {
         let width = rect.width();
         let height = rect.height() + 8;
@@ -538,9 +540,13 @@ where
             return Ok(());
         }
 
-        let is_focused = self.window_manager.get_active_window()
-            .map(|act| act == target_hwnd)
-            .unwrap_or(false);
+        let is_focused = if let Some(fg) = new_fg_hwnd {
+            fg == target_hwnd
+        } else {
+            self.window_manager.get_active_window()
+                .map(|act| act == target_hwnd)
+                .unwrap_or(false)
+        };
 
         let mut canvas = crate::ui::overlay::Canvas::new(width as u32, height as u32)?;
         canvas.clear(Color::TRANSPARENT);
@@ -793,9 +799,10 @@ mod tests {
             sum
         };
 
-        // 2. Change active window to something else (e.g. HWND(999)) -> unfocused
-        *controller.window_manager.active_window.lock().unwrap() = HWND(999);
-        controller.handle_focus_changed(target).unwrap();
+        // 2. Pass a different focused window handle (HWND(999)) to handle_focus_changed.
+        // We do NOT change active_window mock (it is still target HWND(12345)).
+        // Since we pass HWND(999) as new_fg_hwnd, it must update to unfocused state directly.
+        controller.handle_focus_changed(target, HWND(999)).unwrap();
 
         let last_sum_unfocused = {
             let last_update = controller.overlay_manager.last_pixel_sum.lock().unwrap();

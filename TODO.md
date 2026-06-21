@@ -66,3 +66,6 @@ Follow the TDD cycle strictly: write failing test -> verify -> write minimal imp
   - Set outline opacity to 75% (alpha 191).
   - Add test verifying thickness and opacity of outline pixels in mock overlay manager.
   - Verify with unit tests.
+- [x] **Task 17: Optimize overlay focus transition speed**
+  - Avoid race condition/delay when querying `GetForegroundWindow()` by passing the new foreground window handle directly from the `EVENT_SYSTEM_FOREGROUND` event hook payload.
+  - Verify with unit tests.
