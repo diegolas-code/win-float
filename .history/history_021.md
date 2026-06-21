@@ -5,9 +5,9 @@
   - [x] Defined `blit_pixmap` helper in `src/ui/draw.rs` to allow blitting drawing buffers.
   - [x] Registered `EVENT_SYSTEM_FOREGROUND` in `WindowEventTracker` in `src/app/tracker.rs` to track active foreground window changes.
   - [x] Added `WM_TACTILE_FOCUS_CHANGED` to post focus change notifications to tracked window overlays.
-  - [x] Sized the always-on-top pin overlay to cover the target window instead of a hardcoded 32x32 size, adjusted to start 10px higher from the top (`y = rect.top - 10`, `height = rect.height() + 10`).
+  - [x] Sized the always-on-top pin overlay to cover the target window instead of a hardcoded 32x32 size, adjusted to start 7px higher from the top (`y = rect.top - 7`, `height = rect.height() + 7`).
   - [x] Implemented `handle_focus_changed` and `update_pinned_overlay_graphics` inside `AppController` in `src/app/controller.rs` to redraw the overlay when the target window gains/loses focus.
-  - [x] Integrated conditional drawing of the system accent border in `update_pinned_overlay_graphics` only when the pinned window is focused.
+  - [x] Integrated conditional drawing of the system accent border with rounded corners (5px radius) in `update_pinned_overlay_graphics` only when the pinned window is focused.
   - [x] Removed unused transparency warning threshold functions and tests from `src/transparency_calc.rs`.
   - [x] Verified code compiles and passes all 33 tests.
 
@@ -16,8 +16,9 @@
   - Tracking focus changes required interception of `EVENT_SYSTEM_FOREGROUND` without breaking current win event hooks.
 
 - **Solutions Applied:**
-  - Resized the pin overlay to match the window bounds, extended 10px taller from the top (`rect.width()` and `rect.height() + 10`), and positioned the pin icon dynamically in the top-right corner of the canvas using `blit_pixmap`.
+  - Resized the pin overlay to match the window bounds, extended 7px taller from the top (`rect.width()` and `rect.height() + 7`), and positioned the pin icon dynamically in the top-right corner of the canvas using `blit_pixmap`.
   - Setup a second win event hook handle in `WindowEventTracker` specifically tracking `EVENT_SYSTEM_FOREGROUND`, sending a thread message to all tracked overlay handles to redraw when focus moves.
+  - Updated `draw_border` in `src/ui/draw.rs` to build a rounded path using `pb.quad_to` and draw it with a 5px corner radius.
 
 - **Verification Proof:**
   - Output of `cargo test`:

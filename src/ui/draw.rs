@@ -288,15 +288,34 @@ pub fn draw_border(
     canvas: &mut Canvas,
     accent_color: Color,
     border_thickness: f32,
+    corner_radius: f32,
 ) -> Result<(), String> {
     let width = canvas.width() as f32;
     let height = canvas.height() as f32;
     let pixmap = canvas.pixmap_mut();
 
     let half_t = border_thickness / 2.0;
-    let rect = SkiaRect::from_ltrb(half_t, half_t, width - half_t, height - half_t)
-        .ok_or_else(|| "Invalid border dimensions".to_string())?;
-    let path = PathBuilder::from_rect(rect);
+    let l = half_t;
+    let t = half_t;
+    let r = width - half_t;
+    let b = height - half_t;
+
+    let path = {
+        let mut pb = PathBuilder::new();
+        let rad = corner_radius;
+        
+        pb.move_to(l + rad, t);
+        pb.line_to(r - rad, t);
+        pb.quad_to(r, t, r, t + rad);
+        pb.line_to(r, b - rad);
+        pb.quad_to(r, b, r - rad, b);
+        pb.line_to(l + rad, b);
+        pb.quad_to(l, b, l, b - rad);
+        pb.line_to(l, t + rad);
+        pb.quad_to(l, t, l + rad, t);
+        pb.close();
+        pb.finish()
+    }.ok_or_else(|| "Failed to build rounded border path".to_string())?;
 
     let mut paint = Paint::default();
     paint.set_color(accent_color);
@@ -365,7 +384,7 @@ mod tests {
         assert_eq!(initial_sum, 0);
 
         let accent = Color::from_rgba8(0, 120, 215, 255);
-        draw_border(&mut canvas, accent, 2.0).unwrap();
+        draw_border(&mut canvas, accent, 2.0, 5.0).unwrap();
 
         let modified_sum: usize = canvas.pixels().iter().map(|&b| b as usize).sum();
         assert!(modified_sum > 0); // should fail because dummy does not draw
