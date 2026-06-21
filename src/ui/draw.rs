@@ -384,7 +384,7 @@ mod tests {
         assert_eq!(initial_sum, 0);
 
         let accent = Color::from_rgba8(0, 120, 215, 255);
-        draw_border(&mut canvas, accent, 2.0, 5.0).unwrap();
+        draw_border(&mut canvas, accent, 2.0, 8.0).unwrap();
 
         let modified_sum: usize = canvas.pixels().iter().map(|&b| b as usize).sum();
         assert!(modified_sum > 0); // should fail because dummy does not draw

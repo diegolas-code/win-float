@@ -192,8 +192,8 @@ where
                 if new_state {
                     let rect = get_window_rect_helper(active).unwrap_or(crate::hud_layout::Rect::new(0, 0, 800, 600));
                     let width = rect.width();
-                    let height = rect.height() + 7;
-                    let overlay = self.overlay_manager.create_overlay(active, rect.left, rect.top - 7, width, height)?;
+                    let height = rect.height() + 8;
+                    let overlay = self.overlay_manager.create_overlay(active, rect.left, rect.top - 8, width, height)?;
 
                     self.update_pinned_overlay_graphics(active, overlay, rect)?;
                     self.event_tracker.start_tracking(active, overlay)?;
@@ -473,7 +473,7 @@ where
                 let (hx, hy) = crate::hud_layout::calculate_hud_position(rect, hud_w, hud_h);
                 (hx, hy, hud_w, hud_h)
             } else {
-                (rect.left, rect.top - 7, rect.width(), rect.height() + 7)
+                (rect.left, rect.top - 8, rect.width(), rect.height() + 8)
             };
 
             unsafe {
@@ -533,7 +533,7 @@ where
         rect: crate::hud_layout::Rect,
     ) -> Result<(), String> {
         let width = rect.width();
-        let height = rect.height() + 7;
+        let height = rect.height() + 8;
         if width <= 0 || height <= 0 {
             return Ok(());
         }
@@ -547,9 +547,9 @@ where
 
         let accent_color = get_system_accent_color();
 
-        // If the window has focus, draw the accent outline border with a 5px corner radius
+        // If the window has focus, draw the accent outline border with an 8px corner radius
         if is_focused {
-            crate::ui::draw::draw_border(&mut canvas, accent_color, 2.0, 5.0)?;
+            crate::ui::draw::draw_border(&mut canvas, accent_color, 2.0, 8.0)?;
         }
 
         // Draw the pin icon in the top-right corner
@@ -642,8 +642,8 @@ mod tests {
             let overlays = controller.overlay_manager.overlays.lock().unwrap();
             assert_eq!(overlays.len(), 1);
             let (_, _ox, oy, _ow, oh) = overlays[0];
-            assert_eq!(oy, -7, "overlay y should start at top - 7");
-            assert_eq!(oh, 607, "overlay height should be rect.height() + 7");
+            assert_eq!(oy, -8, "overlay y should start at top - 8");
+            assert_eq!(oh, 608, "overlay height should be rect.height() + 8");
         }
         
         controller.handle_hotkey(HOTKEY_TOPMOST_ID).unwrap();
