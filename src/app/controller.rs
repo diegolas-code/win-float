@@ -18,7 +18,19 @@ use std::process::ChildStdin;
 const HOTKEY_TOPMOST_ID: i32 = 1;
 const HOTKEY_MODAL_ID: i32 = 2;
 
+#[cfg(test)]
+use std::sync::Mutex;
+#[cfg(test)]
+static TEST_RECT: Mutex<Option<crate::hud_layout::Rect>> = Mutex::new(None);
+
 fn get_window_rect_helper(hwnd: HWND) -> Result<crate::hud_layout::Rect, String> {
+    #[cfg(test)]
+    {
+        if let Some(r) = *TEST_RECT.lock().unwrap() {
+            return Ok(r);
+        }
+    }
+
     let mut rect = RECT::default();
     let res = unsafe { GetWindowRect(hwnd, &mut rect) };
     if res.is_err() {
@@ -74,6 +86,8 @@ where
     pub slider_velocity: f32,
     pub slider_percentage: f32,
     pub last_physics_update: Option<Instant>,
+    pub overlay_rects: HashMap<isize, crate::hud_layout::Rect>, // target HWND -> last known target rect
+    pub overlay_focus_states: HashMap<isize, bool>, // target HWND -> is_focused
 }
 
 impl<W, I, O, T> AppController<W, I, O, T>
@@ -115,6 +129,8 @@ where
             slider_velocity: 0.0,
             slider_percentage: 100.0,
             last_physics_update: None,
+            overlay_rects: HashMap::new(),
+            overlay_focus_states: HashMap::new(),
         })
     }
 
@@ -199,10 +215,13 @@ where
                     self.update_pinned_overlay_graphics(active, overlay, rect, None)?;
                     self.event_tracker.start_tracking(active, overlay)?;
                     self.pinned_overlays.insert(active.0, overlay);
+                    self.overlay_rects.insert(active.0, rect);
                     println!("[Win-Float] [Info] Pinned window HWND 0x{:X}. Created overlay HWND 0x{:X} spanning the entire window.", active.0, overlay.0);
                 } else if let Some(overlay) = self.pinned_overlays.remove(&active.0) {
                     self.event_tracker.stop_tracking(active);
                     self.overlay_manager.destroy_overlay(overlay);
+                    self.overlay_rects.remove(&active.0);
+                    self.overlay_focus_states.remove(&active.0);
                     println!("[Win-Float] [Info] Unpinned window HWND 0x{:X}. Destroyed overlay HWND 0x{:X}.", active.0, overlay.0);
                 }
             }
@@ -466,6 +485,22 @@ where
 
         if let Some(overlay) = overlay_hwnd {
             let rect = get_window_rect_helper(target_hwnd).unwrap_or(crate::hud_layout::Rect::new(0, 0, 800, 600));
+            
+            let last_rect = self.overlay_rects.get(&target_hwnd.0).copied();
+            
+            if let Some(lr) = last_rect {
+                if lr.left == rect.left && lr.top == rect.top && lr.width() == rect.width() && lr.height() == rect.height() {
+                    // Nothing changed. Avoid duplicate repositioning and drawing.
+                    return Ok(());
+                }
+            }
+
+            let size_changed = last_rect
+                .map(|lr| lr.width() != rect.width() || lr.height() != rect.height())
+                .unwrap_or(true);
+
+            self.overlay_rects.insert(target_hwnd.0, rect);
+
             let is_modal = self.modal_target == Some(target_hwnd);
 
             let (ox, oy, ow, oh) = if is_modal {
@@ -490,11 +525,11 @@ where
                 );
             }
 
-            if !is_modal {
+            if !is_modal && size_changed {
                 self.update_pinned_overlay_graphics(target_hwnd, overlay, rect, None)?;
             }
 
-            println!("[Win-Float] [Info] Tracked window HWND 0x{:X} moved. Repositioning overlay HWND 0x{:X} to coordinates (x: {}, y: {}).", target_hwnd.0, overlay.0, ox, oy);
+            println!("[Win-Float] [Info] Tracked window HWND 0x{:X} moved. Repositioning overlay HWND 0x{:X} to coordinates (x: {}, y: {}). Size changed: {}.", target_hwnd.0, overlay.0, ox, oy, size_changed);
         }
         Ok(())
     }
@@ -521,6 +556,15 @@ where
 
     pub fn handle_focus_changed(&mut self, target_hwnd: HWND, new_fg_hwnd: HWND) -> Result<(), String> {
         if let Some(&overlay) = self.pinned_overlays.get(&target_hwnd.0) {
+            let is_focused = target_hwnd == new_fg_hwnd;
+            
+            let last_focus = self.overlay_focus_states.get(&target_hwnd.0).copied();
+            if last_focus == Some(is_focused) {
+                // Focus state did not change. Skip redraw.
+                return Ok(());
+            }
+
+            self.overlay_focus_states.insert(target_hwnd.0, is_focused);
             let rect = get_window_rect_helper(target_hwnd).unwrap_or(crate::hud_layout::Rect::new(0, 0, 800, 600));
             self.update_pinned_overlay_graphics(target_hwnd, overlay, rect, Some(new_fg_hwnd))?;
         }
@@ -543,10 +587,13 @@ where
         let is_focused = if let Some(fg) = new_fg_hwnd {
             fg == target_hwnd
         } else {
-            self.window_manager.get_active_window()
-                .map(|act| act == target_hwnd)
-                .unwrap_or(false)
+            self.overlay_focus_states.get(&target_hwnd.0).copied().unwrap_or_else(|| {
+                self.window_manager.get_active_window()
+                    .map(|act| act == target_hwnd)
+                    .unwrap_or(false)
+            })
         };
+        self.overlay_focus_states.insert(target_hwnd.0, is_focused);
 
         let mut canvas = crate::ui::overlay::Canvas::new(width as u32, height as u32)?;
         canvas.clear(Color::TRANSPARENT);
@@ -843,6 +890,137 @@ mod tests {
         // Assert thickness: at y = 2, with 3.0 thickness, it should still be colored
         let idx_y2 = (2 * width + 400) * 4 + 3;
         assert!(pixels[idx_y2] > 0, "Expected pixel at y=2 to be colored for 3.0px thickness");
+    }
+
+    #[test]
+    fn test_window_moved_does_not_redraw_if_size_unchanged() {
+        let wm = MockWindowManager::default();
+        let target = HWND(12345);
+        *wm.active_window.lock().unwrap() = target;
+
+        let hook = MockInputHook;
+        let om = MockOverlayManager::default();
+        let tracker = MockEventTracker::default();
+        let mut controller = AppController::new(wm, hook, om, tracker).unwrap();
+
+        // Preset initial mock rect (size: 200x100)
+        {
+            *TEST_RECT.lock().unwrap() = Some(crate::hud_layout::Rect::new(100, 100, 300, 200));
+        }
+
+        // Pin the window
+        controller.handle_hotkey(HOTKEY_TOPMOST_ID).unwrap();
+        
+        {
+            let overlays = controller.overlay_manager.overlays.lock().unwrap();
+            assert_eq!(overlays.len(), 1);
+            let (_, ox, oy, ow, oh) = overlays[0];
+            assert_eq!(ox, 100);
+            assert_eq!(oy, 92);
+            assert_eq!(ow, 200);
+            assert_eq!(oh, 108);
+        }
+
+        // Clear last_pixels tracking record
+        *controller.overlay_manager.last_pixels.lock().unwrap() = None;
+
+        // 1. Move position, keep size same
+        {
+            *TEST_RECT.lock().unwrap() = Some(crate::hud_layout::Rect::new(150, 180, 350, 280));
+        }
+        controller.handle_window_moved(target).unwrap();
+
+        assert!(controller.overlay_manager.last_pixels.lock().unwrap().is_none(),
+            "Overlay should not redraw when size is unchanged!");
+
+        // 2. Change size
+        {
+            *TEST_RECT.lock().unwrap() = Some(crate::hud_layout::Rect::new(150, 180, 450, 280));
+        }
+        controller.handle_window_moved(target).unwrap();
+
+        assert!(controller.overlay_manager.last_pixels.lock().unwrap().is_some(),
+            "Overlay should redraw when size changes!");
+
+        // Cleanup
+        *TEST_RECT.lock().unwrap() = None;
+    }
+
+    #[test]
+    fn test_focus_changed_does_not_redraw_if_focus_state_unchanged() {
+        let wm = MockWindowManager::default();
+        let target_a = HWND(1111);
+        let target_b = HWND(2222);
+        
+        *wm.active_window.lock().unwrap() = target_a;
+
+        let hook = MockInputHook;
+        let om = MockOverlayManager::default();
+        let tracker = MockEventTracker::default();
+        let mut controller = AppController::new(wm, hook, om, tracker).unwrap();
+
+        // Pin target_a
+        controller.handle_hotkey(HOTKEY_TOPMOST_ID).unwrap();
+        
+        // Change active to target_b and pin it
+        *controller.window_manager.active_window.lock().unwrap() = target_b;
+        controller.handle_hotkey(HOTKEY_TOPMOST_ID).unwrap();
+        controller.handle_focus_changed(target_a, target_b).unwrap();
+
+        // Clear last_pixels
+        *controller.overlay_manager.last_pixels.lock().unwrap() = None;
+
+        // Move focus to a different window (HWND(999))
+        // target_a remains unfocused -> should NOT redraw
+        controller.handle_focus_changed(target_a, HWND(999)).unwrap();
+        
+        assert!(controller.overlay_manager.last_pixels.lock().unwrap().is_none(),
+            "Overlay A should not redraw when remaining unfocused");
+
+        // target_b changes from focused to unfocused -> should redraw
+        controller.handle_focus_changed(target_b, HWND(999)).unwrap();
+
+        assert!(controller.overlay_manager.last_pixels.lock().unwrap().is_some(),
+            "Overlay B should redraw when focus state changes");
+    }
+
+    #[test]
+    fn test_update_pinned_overlay_graphics_uses_cached_focus_state_when_no_handle_provided() {
+        let wm = MockWindowManager::default();
+        let target = HWND(12345);
+        *wm.active_window.lock().unwrap() = target;
+
+        let hook = MockInputHook;
+        let om = MockOverlayManager::default();
+        let tracker = MockEventTracker::default();
+        let mut controller = AppController::new(wm, hook, om, tracker).unwrap();
+
+        // Pin the window (gets focused initially)
+        controller.handle_hotkey(HOTKEY_TOPMOST_ID).unwrap();
+        
+        let overlay_hwnd = controller.pinned_overlays.get(&target.0).copied().unwrap();
+        
+        // Assert initial cached focus state is true (since target was active)
+        assert_eq!(controller.overlay_focus_states.get(&target.0), Some(&true));
+
+        // Change the mock active window to something else (HWND(999))
+        *controller.window_manager.active_window.lock().unwrap() = HWND(999);
+
+        // Clear last_pixels
+        *controller.overlay_manager.last_pixels.lock().unwrap() = None;
+
+        // Trigger graphics update with None (no fg hwnd provided).
+        // Since focus state is cached as true, it must use the cache and draw the focus outline (meaning last_pixels sum matches focused overlay)
+        let rect = crate::hud_layout::Rect::new(0, 0, 800, 600);
+        controller.update_pinned_overlay_graphics(target, overlay_hwnd, rect, None).unwrap();
+
+        let pixels = controller.overlay_manager.last_pixels.lock().unwrap().clone().unwrap();
+        let width = 800;
+        
+        // Check that the outline border is indeed drawn (alpha at y=1 should be 191)
+        let idx = (1 * width + 400) * 4 + 3;
+        let alpha = pixels[idx];
+        assert_eq!(alpha, 191, "Expected outline border to be drawn using cached focus state");
     }
 }
 

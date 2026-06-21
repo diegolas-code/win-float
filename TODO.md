@@ -69,3 +69,9 @@ Follow the TDD cycle strictly: write failing test -> verify -> write minimal imp
 - [x] **Task 17: Optimize overlay focus transition speed**
   - Avoid race condition/delay when querying `GetForegroundWindow()` by passing the new foreground window handle directly from the `EVENT_SYSTEM_FOREGROUND` event hook payload.
   - Verify with unit tests.
+- [x] **Task 18: Cache window rects and focus states to avoid redundant overlays drawing**
+  - Skip redraw and movement when window coordinates did not change.
+  - Skip redraw when window size did not change.
+  - Skip redraw when window focus state did not change.
+  - Fallback to cached focus state when updating graphics without a provided handle, preventing race conditions from active window manager queries during layout adjustments.
+  - Verify with unit tests.
