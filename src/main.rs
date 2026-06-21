@@ -16,15 +16,26 @@ use windows::core::w;
 use windows::Win32::Foundation::{HWND, HINSTANCE, LRESULT, WPARAM, LPARAM, BOOL, FALSE, TRUE};
 use windows::Win32::UI::WindowsAndMessaging::{
     RegisterClassExW, CreateWindowExW, DefWindowProcW, WNDCLASSEXW, CS_HREDRAW, CS_VREDRAW,
-    HWND_MESSAGE, WS_POPUP, HMENU, PostQuitMessage,
+    HWND_MESSAGE, WS_POPUP, HMENU, PostThreadMessageW, WM_QUIT,
 };
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::System::Console::{SetConsoleCtrlHandler, CTRL_C_EVENT};
+use windows::Win32::System::Threading::GetCurrentThreadId;
+
+static mut MAIN_THREAD_ID: u32 = 0;
 
 unsafe extern "system" fn ctrl_handler(ctrl_type: u32) -> BOOL {
     if ctrl_type == CTRL_C_EVENT {
-        unsafe {
-            PostQuitMessage(0);
+        let thread_id = unsafe { MAIN_THREAD_ID };
+        if thread_id != 0 {
+            let _ = unsafe {
+                PostThreadMessageW(
+                    thread_id,
+                    WM_QUIT,
+                    WPARAM(0),
+                    LPARAM(0),
+                )
+            };
         }
         return TRUE;
     }
@@ -84,6 +95,7 @@ fn create_message_window() -> Result<HWND, String> {
 
 fn main() -> Result<(), String> {
     unsafe {
+        MAIN_THREAD_ID = GetCurrentThreadId();
         let _ = SetConsoleCtrlHandler(Some(ctrl_handler), true);
     }
     let msg_hwnd = create_message_window()?;
