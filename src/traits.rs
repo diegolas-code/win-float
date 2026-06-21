@@ -5,11 +5,24 @@ pub trait WindowManager {
     fn get_active_window(&self) -> Result<HWND, String>;
     fn set_always_on_top(&self, hwnd: HWND, enabled: bool) -> Result<(), String>;
     fn set_transparency(&self, hwnd: HWND, alpha: u8) -> Result<(), String>;
+    fn is_always_on_top(&self, hwnd: HWND) -> Result<bool, String>;
 }
 
 pub trait InputHook {
     fn capture_keyboard(&self) -> Result<(), String>;
     fn release_keyboard(&self);
+}
+
+pub trait OverlayManager {
+    fn create_overlay(&self, x: i32, y: i32, width: i32, height: i32) -> Result<HWND, String>;
+    fn update_overlay(&self, hwnd: HWND, pixels: &[u8], width: u32, height: u32) -> Result<(), String>;
+    fn destroy_overlay(&self, hwnd: HWND);
+}
+
+pub trait EventTracker {
+    fn start_tracking(&self, target_hwnd: HWND, overlay_hwnd: HWND) -> Result<(), String>;
+    fn stop_tracking(&self, target_hwnd: HWND);
+    fn is_tracking(&self, target_hwnd: HWND) -> bool;
 }
 
 pub struct MockWindowManager {
@@ -41,6 +54,74 @@ impl WindowManager for MockWindowManager {
     fn set_transparency(&self, hwnd: HWND, alpha: u8) -> Result<(), String> {
         *self.transparency.lock().unwrap() = Some((hwnd, alpha));
         Ok(())
+    }
+
+    fn is_always_on_top(&self, hwnd: HWND) -> Result<bool, String> {
+        let guard = self.always_on_top.lock().unwrap();
+        if let Some((h, enabled)) = *guard {
+            if h == hwnd {
+                return Ok(enabled);
+            }
+        }
+        Ok(false)
+    }
+}
+
+pub struct MockOverlayManager {
+    pub overlays: Mutex<Vec<(HWND, i32, i32, i32, i32)>>,
+    pub last_updated: Mutex<Option<(HWND, usize)>>, // (HWND, size of pixels)
+}
+
+impl Default for MockOverlayManager {
+    fn default() -> Self {
+        Self {
+            overlays: Mutex::new(Vec::new()),
+            last_updated: Mutex::new(None),
+        }
+    }
+}
+
+impl OverlayManager for MockOverlayManager {
+    fn create_overlay(&self, x: i32, y: i32, width: i32, height: i32) -> Result<HWND, String> {
+        let fake_hwnd = HWND(1000 + self.overlays.lock().unwrap().len() as isize);
+        self.overlays.lock().unwrap().push((fake_hwnd, x, y, width, height));
+        Ok(fake_hwnd)
+    }
+
+    fn update_overlay(&self, hwnd: HWND, pixels: &[u8], _width: u32, _height: u32) -> Result<(), String> {
+        *self.last_updated.lock().unwrap() = Some((hwnd, pixels.len()));
+        Ok(())
+    }
+
+    fn destroy_overlay(&self, hwnd: HWND) {
+        self.overlays.lock().unwrap().retain(|&(h, _, _, _, _)| h != hwnd);
+    }
+}
+
+pub struct MockEventTracker {
+    pub tracked: Mutex<Vec<(HWND, HWND)>>,
+}
+
+impl Default for MockEventTracker {
+    fn default() -> Self {
+        Self {
+            tracked: Mutex::new(Vec::new()),
+        }
+    }
+}
+
+impl EventTracker for MockEventTracker {
+    fn start_tracking(&self, target_hwnd: HWND, overlay_hwnd: HWND) -> Result<(), String> {
+        self.tracked.lock().unwrap().push((target_hwnd, overlay_hwnd));
+        Ok(())
+    }
+
+    fn stop_tracking(&self, target_hwnd: HWND) {
+        self.tracked.lock().unwrap().retain(|&(t, _)| t != target_hwnd);
+    }
+
+    fn is_tracking(&self, target_hwnd: HWND) -> bool {
+        self.tracked.lock().unwrap().iter().any(|&(t, _)| t == target_hwnd)
     }
 }
 

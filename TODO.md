@@ -44,7 +44,7 @@ Follow the TDD cycle strictly: write failing test -> verify -> write minimal imp
 ## Phase 5: App Controller & Event Loop
 - [x] **Task 10: Event Tracker (`src/app/tracker.rs`)**
   - Implement `WindowEventTracker` using `SetWinEventHook` to handle `EVENT_OBJECT_LOCATIONCHANGE` and `EVENT_OBJECT_DESTROY`.
-- [ ] **Task 11: Main App Loop & Controller (`src/app/controller.rs`)**
+- [x] **Task 11: Main App Loop & Controller (`src/app/controller.rs`)**
   - Integrate all components inside `AppController` running `GetMessageW` loop.
 - [ ] **Task 12: Application Entry (`src/main.rs`)**
   - Connect all layers, register global hotkeys, run final end-to-end tests, and packaging.

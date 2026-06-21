@@ -24,8 +24,10 @@ impl WindowEventTracker {
             hook: Mutex::new(None),
         }
     }
+}
 
-    pub fn start_tracking(&self, target_hwnd: HWND, overlay_hwnd: HWND) -> Result<(), String> {
+impl crate::traits::EventTracker for WindowEventTracker {
+    fn start_tracking(&self, target_hwnd: HWND, overlay_hwnd: HWND) -> Result<(), String> {
         if target_hwnd.0 == 0 || overlay_hwnd.0 == 0 {
             return Err("Invalid HWND handles".to_string());
         }
@@ -64,7 +66,7 @@ impl WindowEventTracker {
         Ok(())
     }
 
-    pub fn stop_tracking(&self, target_hwnd: HWND) {
+    fn stop_tracking(&self, target_hwnd: HWND) {
         let mut map_guard = TRACKED_WINDOWS.lock().unwrap();
         if let Some(ref mut map) = *map_guard {
             map.remove(&target_hwnd.0);
@@ -80,7 +82,7 @@ impl WindowEventTracker {
         }
     }
 
-    pub fn is_tracking(&self, target_hwnd: HWND) -> bool {
+    fn is_tracking(&self, target_hwnd: HWND) -> bool {
         let map_guard = TRACKED_WINDOWS.lock().unwrap();
         if let Some(ref map) = *map_guard {
             map.contains_key(&target_hwnd.0)
@@ -158,6 +160,7 @@ unsafe extern "system" fn win_event_proc(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::traits::EventTracker;
 
     #[test]
     fn test_tracker_lifecycle_states() {
