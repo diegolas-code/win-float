@@ -24,7 +24,3 @@ Welcome, developer agent. Please follow these guidelines strictly when working o
 - Commit atomically after passing each test step.
 - For each major commit, create a new tracking file in [.history/](file:///C:/Users/Diegolas/Code/rust/WIN-FLOAT/win-float/.history/) (following the template in [.history/README.md](file:///C:/Users/Diegolas/Code/rust/WIN-FLOAT/win-float/.history/README.md)) documenting tasks completed, issues found, solutions, and verification proof.
 - Update [PAUSE.md](file:///C:/Users/Diegolas/Code/rust/WIN-FLOAT/win-float/PAUSE.md) at the end of every session to ensure a clean handoff of project state.
-
-## 5. Output and Visibility Rules
-- Always output the full stdout/stderr of executed commands in the chat response.
-- Always display the complete content of newly created files or significant file changes directly in the chat response.
