@@ -26,6 +26,7 @@ static mut MAIN_THREAD_ID: u32 = 0;
 
 unsafe extern "system" fn ctrl_handler(ctrl_type: u32) -> BOOL {
     if ctrl_type == CTRL_C_EVENT {
+        println!("[Win-Float] [Info] Received Ctrl+C event. Initiating graceful shutdown...");
         let thread_id = unsafe { MAIN_THREAD_ID };
         if thread_id != 0 {
             let _ = unsafe {
@@ -94,6 +95,7 @@ fn create_message_window() -> Result<HWND, String> {
 }
 
 fn main() -> Result<(), String> {
+    println!("[Win-Float] [Info] Win-Float daemon started.");
     unsafe {
         MAIN_THREAD_ID = GetCurrentThreadId();
         let _ = SetConsoleCtrlHandler(Some(ctrl_handler), true);
@@ -104,6 +106,9 @@ fn main() -> Result<(), String> {
     let om = LiveOverlayManager;
     let tracker = WindowEventTracker::new();
 
+    println!("[Win-Float] [Info] Entering message loop. Registering global hotkeys...");
     let mut controller = AppController::new(wm, hook, om, tracker)?;
-    controller.run()
+    let res = controller.run();
+    println!("[Win-Float] [Info] Message loop exited. Cleaning up resource handles.");
+    res
 }

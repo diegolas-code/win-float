@@ -48,3 +48,6 @@ Follow the TDD cycle strictly: write failing test -> verify -> write minimal imp
   - Integrate all components inside `AppController` running `GetMessageW` loop.
 - [x] **Task 12: Application Entry (`src/main.rs`)**
   - Connect all layers, register global hotkeys, run final end-to-end tests, and packaging.
+- [x] **Task 13: Console Logging Feature**
+  - Print structured operational trace logs to standard output during startup, hotkey usage, pin/unpin, transparency adjustment, window events, and shutdown.
+

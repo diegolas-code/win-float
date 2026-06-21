@@ -4,24 +4,29 @@ This document tracks the project state at the end of each development session. I
 
 ## 1. Last Updated
 - **Date:** 2026-06-21
-- **Task Reference:** Final Polish Complete (Task 12 Polish Complete - 32x32 Bee Icon & Graceful Ctrl+C Message Loop Exit)
+- **Task Reference:** Console Logging Feature Complete (Task 13 Console Logging Feature)
 
 ## 2. Session Achievements
-- Switched to working branch `feature/polish-app` checked out from `dev`.
-- Adjusted the bee pin overlay dimensions from 24x24 to 32x32 inside `src/app/controller.rs`.
-- Configured dynamic vector scaling using `Transform::from_scale` in `draw_pin` inside `src/ui/draw.rs` to render the bee 🐝 cleanly inside the 32x32 boundaries.
-- Removed `#![windows_subsystem = "windows"]` to run as a console application, allowing command prompts to capture and send console signals.
-- Configured console `CTRL_C_EVENT` callback to post `WM_QUIT` using `PostQuitMessage(0)` to cleanly terminate the message loop and execute all resource drop destructors.
-- Verified test outcomes with `cargo test` (all 28 tests passing).
-- Verified production build compile with `cargo build --release`.
+- Switched to working branch `feature/console-logging` checked out from `dev`.
+- Designed and documented implementation plan `2026-06-21-console-logging.md`.
+- Implemented structured trace logging (`[Win-Float] [Info]`) inside `src/main.rs` and `src/app/controller.rs` tracking:
+  - Application startup, loop entry, loop exit, and resource cleanup traces.
+  - Keyboard CTRL+C shutdown intercept events.
+  - Global hotkeys triggered (pin toggling, transparency modal entry).
+  - Target window pinning (target HWND, overlay bee HWND created) and unpinning (overlay destroyed).
+  - Transparency changes (target HWND, percentage updates, calculated Windows alpha values) and modal commits/aborts.
+  - Active tracking events (tracked windows moving/relocating coordinates, tracked windows closing).
+- Documented changes in `.history/history_018.md` and updated `TODO.md` to check off Task 13.
+- Verified compilation and unit tests (all 28 tests passing).
 
 ## 3. Current Task State
-- **Active Task:** Final Polish complete.
-- **Status:** All core implementation tasks, bugfixes, and feature polish adjustments are fully completed.
+- **Active Task:** Console Logging Feature.
+- **Status:** Fully completed and verified.
 
 ## 4. Pending / Next Steps
-- Commit changes to `feature/polish-app`, merge to `dev` (and then `master`), and push to GitHub repository.
+- Commit changes to `feature/console-logging`, merge to `dev` (and then `master`), and push to GitHub repository.
 
 ## 5. System State & Compile Verification
 - **Code compiles:** Yes (`cargo check` and `cargo build --release` successful)
 - **Tests passing:** Yes (`cargo test` successful: 28 tests passed)
+

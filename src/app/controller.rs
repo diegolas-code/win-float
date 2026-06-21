@@ -113,6 +113,7 @@ where
                 return Err("Failed to register modal toggle hotkey".to_string());
             }
         }
+        println!("[Win-Float] [Info] Hotkeys registered: Ctrl+Win+F11 (Toggle Pin), Shift+Win+F11 (Transparency Mode).");
 
         let mut msg = MSG::default();
         unsafe {
@@ -143,6 +144,7 @@ where
     pub fn handle_hotkey(&mut self, id: i32) -> Result<(), String> {
         match id {
             HOTKEY_TOPMOST_ID => {
+                println!("[Win-Float] [Info] Hotkey triggered: Toggle Pin");
                 let active = self.window_manager.get_active_window()?;
                 if active.0 == 0 {
                     return Ok(());
@@ -167,9 +169,11 @@ where
                     self.overlay_manager.update_overlay(overlay, canvas.pixels(), pin_w as u32, pin_h as u32)?;
                     self.event_tracker.start_tracking(active, overlay)?;
                     self.pinned_overlays.insert(active.0, overlay);
+                    println!("[Win-Float] [Info] Pinned window HWND 0x{:X}. Created overlay HWND 0x{:X} (32x32 bee icon).", active.0, overlay.0);
                 } else if let Some(overlay) = self.pinned_overlays.remove(&active.0) {
                     self.event_tracker.stop_tracking(active);
                     self.overlay_manager.destroy_overlay(overlay);
+                    println!("[Win-Float] [Info] Unpinned window HWND 0x{:X}. Destroyed overlay HWND 0x{:X}.", active.0, overlay.0);
                 }
             }
             HOTKEY_MODAL_ID => {
@@ -202,6 +206,7 @@ where
                 self.hud_overlay = Some(overlay);
                 self.modal_target = Some(active);
                 self.event_tracker.start_tracking(active, overlay)?;
+                println!("[Win-Float] [Info] Entering transparency modal for window HWND 0x{:X}. Created HUD overlay HWND 0x{:X}. Captured keyboard input hook.", active.0, overlay.0);
             }
             _ => {}
         }
@@ -224,6 +229,7 @@ where
             Transition::Changed { target_hwnd, new_percentage } => {
                 let alpha = crate::transparency_calc::percentage_to_alpha(new_percentage);
                 self.window_manager.set_transparency(target_hwnd, alpha)?;
+                println!("[Win-Float] [Info] Transparency level adjusted to {}% (Alpha: {}).", new_percentage, alpha);
 
                 if let Some(overlay) = self.hud_overlay {
                     let hud_w = 200;
@@ -241,6 +247,7 @@ where
                     self.overlay_manager.destroy_overlay(overlay);
                 }
                 self.modal_target = None;
+                println!("[Win-Float] [Info] Committing transparency changes for window HWND 0x{:X}. Released keyboard input hook. Destroyed HUD overlay.", target_hwnd.0);
             }
             Transition::Aborted => {
                 self.input_hook.release_keyboard();
@@ -251,6 +258,7 @@ where
                     self.overlay_manager.destroy_overlay(overlay);
                 }
                 self.modal_target = None;
+                println!("[Win-Float] [Info] Aborting transparency changes. Reverting adjustments. Released keyboard input hook. Destroyed HUD overlay.");
             }
             Transition::None => {}
         }
@@ -290,15 +298,18 @@ where
                     SWP_NOZORDER | SWP_NOACTIVATE,
                 );
             }
+            println!("[Win-Float] [Info] Tracked window HWND 0x{:X} moved. Repositioning overlay HWND 0x{:X} to coordinates (x: {}, y: {}).", target_hwnd.0, overlay.0, ox, oy);
         }
         Ok(())
     }
 
     pub fn handle_window_closed_event(&mut self, target_hwnd: HWND) -> Result<(), String> {
         if self.modal_target == Some(target_hwnd) {
+            println!("[Win-Float] [Info] Tracked window HWND 0x{:X} closed while in transparency modal.", target_hwnd.0);
             let trans = self.state_machine.handle_window_closed();
             self.apply_transition(trans)?;
         } else if let Some(overlay) = self.pinned_overlays.remove(&target_hwnd.0) {
+            println!("[Win-Float] [Info] Tracked window HWND 0x{:X} closed. Stopping track and cleaning up overlay HWND 0x{:X}.", target_hwnd.0, overlay.0);
             self.event_tracker.stop_tracking(target_hwnd);
             self.overlay_manager.destroy_overlay(overlay);
         }
