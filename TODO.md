@@ -26,7 +26,7 @@ Follow the TDD cycle strictly: write failing test -> verify -> write minimal imp
   - Verify with `cargo test`.
 
 ## Phase 3: Skia UI Renderer Core
-- [ ] **Task 6: Pixmap Overlay Canvas (`src/ui/overlay.rs`)**
+- [x] **Task 6: Pixmap Overlay Canvas (`src/ui/overlay.rs`)**
   - Write failing tests verifying canvas allocation and pixel boundaries.
   - Implement `Canvas` wrapper around `tiny-skia::Pixmap`.
 - [ ] **Task 7: UI Drawing Helpers (`src/ui/draw.rs`)**
