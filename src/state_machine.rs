@@ -122,6 +122,12 @@ impl StateMachine {
             }
         }
     }
+
+    pub fn set_percentage(&mut self, percentage: u8) {
+        if let Mode::TransparencyModal { target_hwnd: _, ref mut current_percentage } = self.mode {
+            *current_percentage = percentage;
+        }
+    }
 }
 
 #[cfg(test)]

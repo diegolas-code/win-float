@@ -6,6 +6,8 @@ pub trait WindowManager {
     fn set_always_on_top(&self, hwnd: HWND, enabled: bool) -> Result<(), String>;
     fn set_transparency(&self, hwnd: HWND, alpha: u8) -> Result<(), String>;
     fn is_always_on_top(&self, hwnd: HWND) -> Result<bool, String>;
+    fn get_window_style_info(&self, hwnd: HWND) -> Result<(bool, u8, u32, u32, i32), String>;
+    fn restore_window_style_info(&self, hwnd: HWND, was_layered: bool, alpha: u8, cr_key: u32, flags: u32, style: i32) -> Result<(), String>;
 }
 
 pub trait InputHook {
@@ -64,6 +66,14 @@ impl WindowManager for MockWindowManager {
             }
         }
         Ok(false)
+    }
+
+    fn get_window_style_info(&self, _hwnd: HWND) -> Result<(bool, u8, u32, u32, i32), String> {
+        Ok((false, 255, 0, 0, 0))
+    }
+
+    fn restore_window_style_info(&self, _hwnd: HWND, _was_layered: bool, _alpha: u8, _cr_key: u32, _flags: u32, _style: i32) -> Result<(), String> {
+        Ok(())
     }
 }
 
