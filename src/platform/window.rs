@@ -7,7 +7,8 @@ use windows::Win32::UI::WindowsAndMessaging::{
     GetWindowLongW, SetWindowLongW, SetLayeredWindowAttributes,
     CreateWindowExW, DestroyWindow, UpdateLayeredWindow, RegisterClassExW,
     DefWindowProcW, WNDCLASSEXW, CS_HREDRAW, CS_VREDRAW, WS_EX_TRANSPARENT,
-    WS_EX_NOACTIVATE, WS_POPUP, ULW_ALPHA, HMENU,
+    WS_EX_NOACTIVATE, WS_POPUP, ULW_ALPHA, HMENU, GetLayeredWindowAttributes,
+    SWP_NOZORDER, SWP_FRAMECHANGED, SWP_NOACTIVATE,
 };
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::Graphics::Gdi::{
@@ -127,6 +128,54 @@ impl WindowManager for LiveWindowManager {
             return Err(format!("SetLayeredWindowAttributes failed: {:?}", res_alpha));
         }
 
+        Ok(())
+    }
+
+    fn get_window_style_info(&self, hwnd: HWND) -> Result<(bool, u8, u32, u32, i32), String> {
+        if hwnd.0 == 0 || unsafe { !IsWindow(hwnd).as_bool() } {
+            return Err("Invalid window handle".to_string());
+        }
+        unsafe {
+            let style = GetWindowLongW(hwnd, GWL_EXSTYLE);
+            let was_layered = (style & WS_EX_LAYERED.0 as i32) != 0;
+            let mut alpha = 255u8;
+            let mut key = COLORREF(0);
+            let mut flags = windows::Win32::UI::WindowsAndMessaging::LAYERED_WINDOW_ATTRIBUTES_FLAGS(0);
+            if was_layered {
+                let _ = GetLayeredWindowAttributes(hwnd, Some(&mut key), Some(&mut alpha), Some(&mut flags));
+            }
+            Ok((was_layered, alpha, key.0, flags.0, style))
+        }
+    }
+
+    fn restore_window_style_info(&self, hwnd: HWND, was_layered: bool, alpha: u8, cr_key: u32, flags: u32, style: i32) -> Result<(), String> {
+        if hwnd.0 == 0 || unsafe { !IsWindow(hwnd).as_bool() } {
+            return Err("Invalid window handle".to_string());
+        }
+        unsafe {
+            if was_layered {
+                let _ = SetLayeredWindowAttributes(
+                    hwnd,
+                    COLORREF(cr_key),
+                    alpha,
+                    windows::Win32::UI::WindowsAndMessaging::LAYERED_WINDOW_ATTRIBUTES_FLAGS(flags),
+                );
+                let _ = SetWindowLongW(hwnd, GWL_EXSTYLE, style);
+            } else {
+                let current_style = GetWindowLongW(hwnd, GWL_EXSTYLE);
+                let new_style = current_style & !(WS_EX_LAYERED.0 as i32);
+                let _ = SetWindowLongW(hwnd, GWL_EXSTYLE, new_style);
+                let _ = SetWindowPos(
+                    hwnd,
+                    HWND(0),
+                    0,
+                    0,
+                    0,
+                    0,
+                    SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_FRAMECHANGED | SWP_NOACTIVATE,
+                );
+            }
+        }
         Ok(())
     }
 }

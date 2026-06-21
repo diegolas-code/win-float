@@ -2,7 +2,7 @@ use std::sync::Mutex;
 use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, WPARAM};
 use windows::Win32::UI::WindowsAndMessaging::{
     CallNextHookEx, SetWindowsHookExW, UnhookWindowsHookEx, HHOOK, WH_KEYBOARD_LL,
-    WM_KEYDOWN, WM_SYSKEYDOWN, KBDLLHOOKSTRUCT, PostMessageW,
+    WM_KEYDOWN, WM_SYSKEYDOWN, WM_KEYUP, WM_SYSKEYUP, KBDLLHOOKSTRUCT, PostMessageW,
 };
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::core::PCWSTR;
@@ -89,22 +89,28 @@ unsafe extern "system" fn keyboard_hook_proc(code: i32, wparam: WPARAM, lparam: 
         None => return unsafe { CallNextHookEx(None, code, wparam, lparam) },
     };
 
-    if wparam.0 == WM_KEYDOWN as usize || wparam.0 == WM_SYSKEYDOWN as usize {
+    let is_keydown = wparam.0 == WM_KEYDOWN as usize || wparam.0 == WM_SYSKEYDOWN as usize;
+    let is_keyup = wparam.0 == WM_KEYUP as usize || wparam.0 == WM_SYSKEYUP as usize;
+
+    if is_keydown || is_keyup {
         let kbd_struct = unsafe { *(lparam.0 as *const KBDLLHOOKSTRUCT) };
         let vk_code = kbd_struct.vkCode;
+        let event_type: isize = if is_keydown { 0 } else { 1 };
 
-        // Post key message to our HUD window
+        // Post key message to our HUD window.
+        // NOTE: We intentionally do NOT consume the keystroke (i.e. we do not return LRESULT(1)).
+        // Returning a non-zero value from a WH_KEYBOARD_LL hook without calling CallNextHookEx
+        // swallows the event system-wide, causing a complete keyboard freeze across all applications.
+        // The app receives keys via the PostMessageW side-channel above; the hook must always
+        // pass events down the chain.
         let _ = unsafe {
             PostMessageW(
                 state.target_hwnd,
                 WM_TACTILE_KEY_EVENT,
                 WPARAM(vk_code as usize),
-                LPARAM(0),
+                LPARAM(event_type),
             )
         };
-
-        // Consume the key to prevent background window interaction
-        return LRESULT(1);
     }
 
     unsafe { CallNextHookEx(None, code, wparam, lparam) }

@@ -13,14 +13,19 @@ use app::tracker::WindowEventTracker;
 use app::controller::AppController;
 
 use windows::core::w;
-use windows::Win32::Foundation::{HWND, HINSTANCE, LRESULT, WPARAM, LPARAM, BOOL, FALSE, TRUE};
+use windows::Win32::Foundation::{HWND, HINSTANCE, LRESULT, WPARAM, LPARAM, BOOL, FALSE, TRUE, COLORREF};
 use windows::Win32::UI::WindowsAndMessaging::{
     RegisterClassExW, CreateWindowExW, DefWindowProcW, WNDCLASSEXW, CS_HREDRAW, CS_VREDRAW,
     HWND_MESSAGE, WS_POPUP, HMENU, PostThreadMessageW, WM_QUIT,
+    IsWindow, GetWindowLongW, SetWindowLongW, SetLayeredWindowAttributes, GWL_EXSTYLE,
+    WS_EX_LAYERED, SetWindowPos, SWP_NOMOVE, SWP_NOSIZE, SWP_NOZORDER,
+    SWP_FRAMECHANGED, SWP_NOACTIVATE,
 };
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::System::Console::{SetConsoleCtrlHandler, CTRL_C_EVENT};
 use windows::Win32::System::Threading::GetCurrentThreadId;
+use std::io::BufRead;
+use std::collections::HashMap;
 
 static mut MAIN_THREAD_ID: u32 = 0;
 
@@ -94,7 +99,100 @@ fn create_message_window() -> Result<HWND, String> {
     }
 }
 
+struct RestoreState {
+    was_layered: bool,
+    original_alpha: u8,
+    original_cr_key: u32,
+    original_flags: u32,
+    original_style: i32,
+}
+
+fn run_watchdog(parent_pid: u32) {
+    println!("[Win-Float] [Info] Watchdog started for parent PID {}.", parent_pid);
+    let stdin = std::io::stdin();
+    let mut map = HashMap::<isize, RestoreState>::new();
+
+    for line in stdin.lock().lines() {
+        let line = match line {
+            Ok(l) => l,
+            Err(_) => break,
+        };
+        let parts: Vec<&str> = line.split_whitespace().collect();
+        if parts.is_empty() {
+            continue;
+        }
+
+        match parts[0] {
+            "ADD" if parts.len() >= 7 => {
+                let hwnd_hex = parts[1].trim_start_matches("0x");
+                if let (Ok(hwnd), Ok(was_layered), Ok(alpha), Ok(cr_key), Ok(flags), Ok(style)) = (
+                    isize::from_str_radix(hwnd_hex, 16),
+                    parts[2].parse::<bool>(),
+                    parts[3].parse::<u8>(),
+                    parts[4].parse::<u32>(),
+                    parts[5].parse::<u32>(),
+                    parts[6].parse::<i32>(),
+                ) {
+                    map.insert(hwnd, RestoreState {
+                        was_layered,
+                        original_alpha: alpha,
+                        original_cr_key: cr_key,
+                        original_flags: flags,
+                        original_style: style,
+                    });
+                }
+            }
+            "REMOVE" if parts.len() >= 2 => {
+                let hwnd_hex = parts[1].trim_start_matches("0x");
+                if let Ok(hwnd) = isize::from_str_radix(hwnd_hex, 16) {
+                    map.remove(&hwnd);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    println!("[Win-Float] [Info] Watchdog restoring transparency styles on EOF.");
+    for (hwnd_val, state) in map {
+        let hwnd = HWND(hwnd_val);
+        unsafe {
+            if IsWindow(hwnd).as_bool() {
+                if state.was_layered {
+                    let _ = SetLayeredWindowAttributes(
+                        hwnd,
+                        COLORREF(state.original_cr_key),
+                        state.original_alpha,
+                        windows::Win32::UI::WindowsAndMessaging::LAYERED_WINDOW_ATTRIBUTES_FLAGS(state.original_flags),
+                    );
+                    let _ = SetWindowLongW(hwnd, GWL_EXSTYLE, state.original_style);
+                } else {
+                    let style = GetWindowLongW(hwnd, GWL_EXSTYLE);
+                    let new_style = style & !(WS_EX_LAYERED.0 as i32);
+                    let _ = SetWindowLongW(hwnd, GWL_EXSTYLE, new_style);
+                    let _ = SetWindowPos(
+                        hwnd,
+                        HWND(0),
+                        0,
+                        0,
+                        0,
+                        0,
+                        SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_FRAMECHANGED | SWP_NOACTIVATE,
+                    );
+                }
+            }
+        }
+    }
+}
+
 fn main() -> Result<(), String> {
+    let args: Vec<String> = std::env::args().collect();
+    if args.len() >= 3 && args[1] == "--watchdog" {
+        if let Ok(parent_pid) = args[2].parse::<u32>() {
+            run_watchdog(parent_pid);
+        }
+        return Ok(());
+    }
+
     println!("[Win-Float] [Info] Win-Float daemon started.");
     unsafe {
         MAIN_THREAD_ID = GetCurrentThreadId();
