@@ -75,3 +75,7 @@ Follow the TDD cycle strictly: write failing test -> verify -> write minimal imp
   - Skip redraw when window focus state did not change.
   - Fallback to cached focus state when updating graphics without a provided handle, preventing race conditions from active window manager queries during layout adjustments.
   - Verify with unit tests.
+- [x] **Task 19: Climb child window ancestor chain on focus updates**
+  - Use `GetAncestor(hwnd, GA_ROOTOWNER)` to resolve top-level root window parent of focused window handle.
+  - Correctly identify parent window focus when child elements (like browser canvas, editor controls, etc.) are focused.
+  - Verify with unit tests.

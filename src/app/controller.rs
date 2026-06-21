@@ -39,6 +39,33 @@ fn get_window_rect_helper(hwnd: HWND) -> Result<crate::hud_layout::Rect, String>
     Ok(crate::hud_layout::Rect::new(rect.left, rect.top, rect.right, rect.bottom))
 }
 
+#[cfg(test)]
+static TEST_ROOT_ANCESTORS: Mutex<Option<HashMap<isize, isize>>> = Mutex::new(None);
+
+fn get_root_window(hwnd: HWND) -> HWND {
+    #[cfg(test)]
+    {
+        if let Some(ref map) = *TEST_ROOT_ANCESTORS.lock().unwrap() {
+            if let Some(&root) = map.get(&hwnd.0) {
+                return HWND(root);
+            }
+        }
+    }
+
+    if hwnd.0 == 0 {
+        return hwnd;
+    }
+    unsafe {
+        use windows::Win32::UI::WindowsAndMessaging::{GetAncestor, GA_ROOTOWNER};
+        let root = GetAncestor(hwnd, GA_ROOTOWNER);
+        if root.0 != 0 {
+            root
+        } else {
+            hwnd
+        }
+    }
+}
+
 fn load_system_font() -> Result<ab_glyph::FontArc, String> {
     let bytes = std::fs::read("C:\\Windows\\Fonts\\segoeui.ttf")
         .or_else(|_| std::fs::read("C:\\Windows\\Fonts\\arial.ttf"))
@@ -556,7 +583,8 @@ where
 
     pub fn handle_focus_changed(&mut self, target_hwnd: HWND, new_fg_hwnd: HWND) -> Result<(), String> {
         if let Some(&overlay) = self.pinned_overlays.get(&target_hwnd.0) {
-            let is_focused = target_hwnd == new_fg_hwnd;
+            let root_fg = get_root_window(new_fg_hwnd);
+            let is_focused = target_hwnd == root_fg;
             
             let last_focus = self.overlay_focus_states.get(&target_hwnd.0).copied();
             if last_focus == Some(is_focused) {
@@ -566,7 +594,7 @@ where
 
             self.overlay_focus_states.insert(target_hwnd.0, is_focused);
             let rect = get_window_rect_helper(target_hwnd).unwrap_or(crate::hud_layout::Rect::new(0, 0, 800, 600));
-            self.update_pinned_overlay_graphics(target_hwnd, overlay, rect, Some(new_fg_hwnd))?;
+            self.update_pinned_overlay_graphics(target_hwnd, overlay, rect, Some(root_fg))?;
         }
         Ok(())
     }
@@ -585,11 +613,12 @@ where
         }
 
         let is_focused = if let Some(fg) = new_fg_hwnd {
-            fg == target_hwnd
+            let root_fg = get_root_window(fg);
+            root_fg == target_hwnd
         } else {
             self.overlay_focus_states.get(&target_hwnd.0).copied().unwrap_or_else(|| {
                 self.window_manager.get_active_window()
-                    .map(|act| act == target_hwnd)
+                    .map(|act| get_root_window(act) == target_hwnd)
                     .unwrap_or(false)
             })
         };
@@ -1021,6 +1050,51 @@ mod tests {
         let idx = (1 * width + 400) * 4 + 3;
         let alpha = pixels[idx];
         assert_eq!(alpha, 191, "Expected outline border to be drawn using cached focus state");
+    }
+
+    #[test]
+    fn test_focus_changed_identifies_child_window_focus_as_focused() {
+        let wm = MockWindowManager::default();
+        let target = HWND(12345);
+        let child = HWND(98765);
+        
+        *wm.active_window.lock().unwrap() = target;
+
+        let hook = MockInputHook;
+        let om = MockOverlayManager::default();
+        let tracker = MockEventTracker::default();
+        let mut controller = AppController::new(wm, hook, om, tracker).unwrap();
+
+        // Pin target window
+        controller.handle_hotkey(HOTKEY_TOPMOST_ID).unwrap();
+        let _overlay_hwnd = controller.pinned_overlays.get(&target.0).copied().unwrap();
+
+        // 1. Move focus to HWND(999) -> unfocused
+        controller.handle_focus_changed(target, HWND(999)).unwrap();
+        assert_eq!(controller.overlay_focus_states.get(&target.0), Some(&false));
+
+        // Setup mock root ancestor: child's root is target
+        {
+            let mut map = HashMap::new();
+            map.insert(98765, 12345);
+            *TEST_ROOT_ANCESTORS.lock().unwrap() = Some(map);
+        }
+
+        // Clear last_pixels
+        *controller.overlay_manager.last_pixels.lock().unwrap() = None;
+
+        // 2. Focus moves to child window. It must resolve root to target and redraw focused outline!
+        controller.handle_focus_changed(target, child).unwrap();
+
+        // Assert focus cache became true
+        assert_eq!(controller.overlay_focus_states.get(&target.0), Some(&true));
+        
+        // Assert B did redraw
+        assert!(controller.overlay_manager.last_pixels.lock().unwrap().is_some(),
+            "Overlay should redraw when child window gains focus");
+
+        // Clean up
+        *TEST_ROOT_ANCESTORS.lock().unwrap() = None;
     }
 }
 
