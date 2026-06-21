@@ -4,29 +4,29 @@ This document tracks the project state at the end of each development session. I
 
 ## 1. Last Updated
 - **Date:** 2026-06-21
-- **Task Reference:** Console Logging Feature Complete (Task 13 Console Logging Feature)
+- **Task Reference:** Hotfix — Critical WH_KEYBOARD_LL Global Key Consumption Bug
 
 ## 2. Session Achievements
-- Switched to working branch `feature/console-logging` checked out from `dev`.
-- Designed and documented implementation plan `2026-06-21-console-logging.md`.
-- Implemented structured trace logging (`[Win-Float] [Info]`) inside `src/main.rs` and `src/app/controller.rs` tracking:
-  - Application startup, loop entry, loop exit, and resource cleanup traces.
-  - Keyboard CTRL+C shutdown intercept events.
-  - Global hotkeys triggered (pin toggling, transparency modal entry).
-  - Target window pinning (target HWND, overlay bee HWND created) and unpinning (overlay destroyed).
-  - Transparency changes (target HWND, percentage updates, calculated Windows alpha values) and modal commits/aborts.
-  - Active tracking events (tracked windows moving/relocating coordinates, tracked windows closing).
-- Documented changes in `.history/history_018.md` and updated `TODO.md` to check off Task 13.
-- Verified compilation and unit tests (all 28 tests passing).
+- Diagnosed a system-wide keyboard freeze caused by `LRESULT(1)` being returned from the
+  `WH_KEYBOARD_LL` hook proc in `src/platform/hook.rs` without calling `CallNextHookEx`.
+- Removed the offending `return LRESULT(1)` statement. The hook now always passes events down
+  the chain via `CallNextHookEx`; the app still receives key events via the existing
+  `PostMessageW` → `WM_TACTILE_KEY_EVENT` path, so the transparency slider continues to work.
+- Added a safety `NOTE:` comment inside `keyboard_hook_proc` documenting the danger to prevent
+  regression.
+- Documented the fix in `.history/history_019.md`.
+- All 30 unit tests pass; release build is clean.
 
 ## 3. Current Task State
-- **Active Task:** Console Logging Feature.
-- **Status:** Fully completed and verified.
+- **Active Task:** Hotfix complete.
+- **Status:** Fix committed on `feature/transparency-cleanup-and-acceleration`.
 
 ## 4. Pending / Next Steps
-- Commit changes to `feature/console-logging`, merge to `dev` (and then `master`), and push to GitHub repository.
+- Merge `feature/transparency-cleanup-and-acceleration` into `dev` and then into `master`.
+- Push to GitHub repository.
+- Consider adding a regression test that asserts the hook proc always calls `CallNextHookEx`
+  (or at minimum documents that the mock test covers the install/uninstall path only).
 
 ## 5. System State & Compile Verification
 - **Code compiles:** Yes (`cargo check` and `cargo build --release` successful)
-- **Tests passing:** Yes (`cargo test` successful: 28 tests passed)
-
+- **Tests passing:** Yes (`cargo test` successful: 30 tests passed)

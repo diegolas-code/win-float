@@ -97,7 +97,12 @@ unsafe extern "system" fn keyboard_hook_proc(code: i32, wparam: WPARAM, lparam: 
         let vk_code = kbd_struct.vkCode;
         let event_type: isize = if is_keydown { 0 } else { 1 };
 
-        // Post key message to our HUD window
+        // Post key message to our HUD window.
+        // NOTE: We intentionally do NOT consume the keystroke (i.e. we do not return LRESULT(1)).
+        // Returning a non-zero value from a WH_KEYBOARD_LL hook without calling CallNextHookEx
+        // swallows the event system-wide, causing a complete keyboard freeze across all applications.
+        // The app receives keys via the PostMessageW side-channel above; the hook must always
+        // pass events down the chain.
         let _ = unsafe {
             PostMessageW(
                 state.target_hwnd,
@@ -106,9 +111,6 @@ unsafe extern "system" fn keyboard_hook_proc(code: i32, wparam: WPARAM, lparam: 
                 LPARAM(event_type),
             )
         };
-
-        // Consume the key to prevent background window interaction
-        return LRESULT(1);
     }
 
     unsafe { CallNextHookEx(None, code, wparam, lparam) }
