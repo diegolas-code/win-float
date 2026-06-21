@@ -16,11 +16,24 @@ pub trait WindowManager {
     fn get_active_window(&self) -> Result<HWND, String>;
     fn set_always_on_top(&self, hwnd: HWND, enabled: bool) -> Result<(), String>;
     fn set_transparency(&self, hwnd: HWND, alpha: u8) -> Result<(), String>;
+    fn is_always_on_top(&self, hwnd: HWND) -> Result<bool, String>;
 }
 
 pub trait InputHook {
     fn capture_keyboard(&self) -> Result<(), String>;
     fn release_keyboard(&self);
+}
+
+pub trait OverlayManager {
+    fn create_overlay(&self, parent: HWND, x: i32, y: i32, width: i32, height: i32) -> Result<HWND, String>;
+    fn update_overlay(&self, hwnd: HWND, pixels: &[u8], width: u32, height: u32) -> Result<(), String>;
+    fn destroy_overlay(&self, hwnd: HWND);
+}
+
+pub trait EventTracker {
+    fn start_tracking(&self, target_hwnd: HWND, overlay_hwnd: HWND) -> Result<(), String>;
+    fn stop_tracking(&self, target_hwnd: HWND);
+    fn is_tracking(&self, target_hwnd: HWND) -> bool;
 }
 ```
 
