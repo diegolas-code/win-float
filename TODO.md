@@ -16,7 +16,7 @@ Follow the TDD cycle strictly: write failing test -> verify -> write minimal imp
   - Write failing unit tests for percentage-to-alpha conversions, clamping, 15% warning thresholds.
   - Implement minimal functions to pass.
   - Verify with `cargo test`.
-- [ ] **Task 4: Layout Mathematics (`src/hud_layout.rs`)**
+- [x] **Task 4: Layout Mathematics (`src/hud_layout.rs`)**
   - Write failing unit tests calculating pin overlays positions (top-right corner of target RECT) and HUD centering layout.
   - Implement layout coordinate logic.
   - Verify with `cargo test`.
