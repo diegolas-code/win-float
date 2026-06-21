@@ -15,6 +15,13 @@ pub fn percentage_to_alpha(percentage: u8) -> u8 {
     ((pct as u16 * 255 + 50) / 100) as u8
 }
 
+/// Converts a Windows alpha value (0..=255) back to a percentage (0..=100).
+/// This is the inverse of `percentage_to_alpha`, used to seed the slider
+/// when a window already has transparency applied.
+pub fn alpha_to_percentage(alpha: u8) -> u8 {
+    ((alpha as u16 * 100 + 127) / 255) as u8
+}
+
 /// Checks if the opacity percentage is below the warning threshold (15%).
 pub fn is_below_warning_threshold(percentage: u8) -> bool {
     percentage < 15
@@ -40,6 +47,17 @@ mod tests {
         assert_eq!(percentage_to_alpha(50), 128);
         assert_eq!(percentage_to_alpha(15), 38);
         assert_eq!(percentage_to_alpha(120), 255); // Clamped behavior
+    }
+
+    #[test]
+    fn test_alpha_to_percentage() {
+        assert_eq!(alpha_to_percentage(0), 0);
+        assert_eq!(alpha_to_percentage(255), 100);
+        // Round-trip: percentage_to_alpha(p) |> alpha_to_percentage should recover p
+        assert_eq!(alpha_to_percentage(percentage_to_alpha(50)), 50);
+        assert_eq!(alpha_to_percentage(percentage_to_alpha(75)), 75);
+        assert_eq!(alpha_to_percentage(percentage_to_alpha(60)), 60);
+        assert_eq!(alpha_to_percentage(percentage_to_alpha(100)), 100);
     }
 
     #[test]

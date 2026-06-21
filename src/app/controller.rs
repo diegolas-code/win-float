@@ -219,7 +219,25 @@ where
                     return Ok(());
                 }
 
-                let current_trans = 100;
+                // Read the window's current transparency so the slider starts at the real value.
+                // get_window_style_info returns (was_layered, alpha, cr_key, flags, style).
+                // If the window is already layered with LWA_ALPHA, alpha is its current opacity;
+                // otherwise alpha will be 255 (fully opaque), which maps to 100%.
+                let current_trans = match self.window_manager.get_window_style_info(active) {
+                    Ok((was_layered, alpha, _, flags, _)) => {
+                        use windows::Win32::UI::WindowsAndMessaging::LWA_ALPHA;
+                        // flags bit 2 (LWA_ALPHA = 0x2) indicates the alpha channel is active
+                        if was_layered && (flags & LWA_ALPHA.0 != 0) {
+                            crate::transparency_calc::alpha_to_percentage(alpha)
+                        } else {
+                            100
+                        }
+                    }
+                    Err(_) => 100,
+                };
+                // Clamp to slider bounds [60, 100]
+                let current_trans = current_trans.max(60);
+
                 let _ = self.state_machine.enter_modal(active, current_trans);
                 self.input_hook.capture_keyboard()?;
 
@@ -237,12 +255,12 @@ where
                 self.hud_overlay = Some(overlay);
                 self.modal_target = Some(active);
                 self.event_tracker.start_tracking(active, overlay)?;
-                self.slider_percentage = 100.0;
+                self.slider_percentage = current_trans as f32;
                 self.slider_velocity = 0.0;
                 self.last_physics_update = Some(Instant::now());
                 self.pressed_keys.clear();
                 unsafe { SetTimer(HWND(0), 1, 10, None); }
-                println!("[Win-Float] [Info] Entering transparency modal for window HWND 0x{:X}. Created HUD overlay HWND 0x{:X}. Captured keyboard input hook.", active.0, overlay.0);
+                println!("[Win-Float] [Info] Entering transparency modal for window HWND 0x{:X}. Initial transparency: {}%. Created HUD overlay HWND 0x{:X}. Captured keyboard input hook.", active.0, current_trans, overlay.0);
             }
             _ => {}
         }
@@ -660,6 +678,28 @@ mod tests {
 
         // High friction should have decayed velocity significantly
         assert!(controller.slider_velocity.abs() < 5.0);
+    }
+
+    #[test]
+    fn test_modal_slider_seeds_from_existing_transparency() {
+        // Simulate a window that already has 75% transparency applied
+        let wm = MockWindowManager::default();
+        let target = HWND(12345);
+        *wm.active_window.lock().unwrap() = target;
+        // was_layered=true, alpha = percentage_to_alpha(75) = 191, flags = LWA_ALPHA (0x2)
+        let alpha_75 = crate::transparency_calc::percentage_to_alpha(75);
+        *wm.preset_style_info.lock().unwrap() = (true, alpha_75, 0, 0x2, 0);
+
+        let hook = MockInputHook;
+        let om = MockOverlayManager::default();
+        let tracker = MockEventTracker::default();
+        let mut controller = AppController::new(wm, hook, om, tracker).unwrap();
+
+        controller.handle_hotkey(HOTKEY_MODAL_ID).unwrap();
+
+        // slider_percentage must be seeded at 75, not 100
+        assert_eq!(controller.slider_percentage as u8, 75,
+            "slider should start at the window's existing transparency (75%), not 100%");
     }
 }
 

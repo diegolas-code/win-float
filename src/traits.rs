@@ -31,6 +31,9 @@ pub struct MockWindowManager {
     pub active_window: Mutex<HWND>,
     pub always_on_top: Mutex<Option<(HWND, bool)>>,
     pub transparency: Mutex<Option<(HWND, u8)>>,
+    /// Pre-set style info returned by get_window_style_info.
+    /// Tuple: (was_layered, alpha, cr_key, flags, style)
+    pub preset_style_info: Mutex<(bool, u8, u32, u32, i32)>,
 }
 
 impl Default for MockWindowManager {
@@ -39,6 +42,7 @@ impl Default for MockWindowManager {
             active_window: Mutex::new(HWND(0)),
             always_on_top: Mutex::new(None),
             transparency: Mutex::new(None),
+            preset_style_info: Mutex::new((false, 255, 0, 0, 0)),
         }
     }
 }
@@ -69,7 +73,7 @@ impl WindowManager for MockWindowManager {
     }
 
     fn get_window_style_info(&self, _hwnd: HWND) -> Result<(bool, u8, u32, u32, i32), String> {
-        Ok((false, 255, 0, 0, 0))
+        Ok(*self.preset_style_info.lock().unwrap())
     }
 
     fn restore_window_style_info(&self, _hwnd: HWND, _was_layered: bool, _alpha: u8, _cr_key: u32, _flags: u32, _style: i32) -> Result<(), String> {

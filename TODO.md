@@ -51,3 +51,7 @@ Follow the TDD cycle strictly: write failing test -> verify -> write minimal imp
 - [x] **Task 13: Console Logging Feature**
   - Print structured operational trace logs to standard output during startup, hotkey usage, pin/unpin, transparency adjustment, window events, and shutdown.
 
+## Phase 6: Post-Release Fixes
+- [x] **Task 14: Slider seeds from existing window transparency**
+  - Read existing window layered style/alpha to seed the slider percentage when entering the transparency modal.
+  - Verify with unit tests.
