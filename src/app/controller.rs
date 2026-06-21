@@ -546,10 +546,14 @@ where
         canvas.clear(Color::TRANSPARENT);
 
         let accent_color = get_system_accent_color();
+        let r = (accent_color.red() * 255.0).round() as u8;
+        let g = (accent_color.green() * 255.0).round() as u8;
+        let b = (accent_color.blue() * 255.0).round() as u8;
+        let accent_75 = Color::from_rgba8(r, g, b, 191); // 191 is 75% of 255
 
         // If the window has focus, draw the accent outline border with an 8px corner radius
         if is_focused {
-            crate::ui::draw::draw_border(&mut canvas, accent_color, 2.0, 8.0)?;
+            crate::ui::draw::draw_border(&mut canvas, accent_75, 3.0, 8.0)?;
         }
 
         // Draw the pin icon in the top-right corner
@@ -802,6 +806,36 @@ mod tests {
         
         // Unfocused should have less colored pixels than focused because the outline is removed
         assert!(last_sum_focused > last_sum_unfocused, "Focused sum: {}, Unfocused sum: {}", last_sum_focused, last_sum_unfocused);
+    }
+
+    #[test]
+    fn test_always_on_top_overlay_focus_outline_thickness_and_opacity() {
+        let wm = MockWindowManager::default();
+        let target = HWND(12345);
+        *wm.active_window.lock().unwrap() = target;
+
+        let hook = MockInputHook;
+        let om = MockOverlayManager::default();
+        let tracker = MockEventTracker::default();
+        let mut controller = AppController::new(wm, hook, om, tracker).unwrap();
+
+        // Pin the window
+        controller.handle_hotkey(HOTKEY_TOPMOST_ID).unwrap();
+        
+        let pixels_opt = controller.overlay_manager.last_pixels.lock().unwrap().clone();
+        assert!(pixels_opt.is_some());
+        let pixels = pixels_opt.unwrap();
+        
+        let width = 800;
+        
+        // Assert alpha channel (75% opacity = 191) at a pixel fully inside the stroke
+        let idx = (1 * width + 400) * 4 + 3;
+        let alpha = pixels[idx];
+        assert_eq!(alpha, 191, "Expected border alpha to be 191 (75% opacity), got {}", alpha);
+
+        // Assert thickness: at y = 2, with 3.0 thickness, it should still be colored
+        let idx_y2 = (2 * width + 400) * 4 + 3;
+        assert!(pixels[idx_y2] > 0, "Expected pixel at y=2 to be colored for 3.0px thickness");
     }
 }
 

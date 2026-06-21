@@ -4,29 +4,23 @@ This document tracks the project state at the end of each development session. I
 
 ## 1. Last Updated
 - **Date:** 2026-06-21
-- **Task Reference:** Feature — Always-On-Top Focused Window Accent Outline (with 8px Top Extension & 8px Rounded Corners)
+- **Task Reference:** Focus Accent Outline (Thicker: 3.0px, Opacity: 75% / Alpha 191)
 
 ## 2. Session Achievements
-- Removed the planned (but unused in code) 15% transparency warning threshold outline, deleting its calculation helpers and tests.
-- Re-architected pin overlays: Pin overlays now span the target window (`rect.width()` and `rect.height() + 8`), starting 8px higher from the top side.
-- Added `blit_pixmap` utility to allow drawing the pin icon in the top-right corner of the window-sized canvas.
-- Hooked `EVENT_SYSTEM_FOREGROUND` in `WindowEventTracker` to track foreground focus changes.
-- Dispatched `WM_TACTILE_FOCUS_CHANGED` to update overlay graphics whenever focus shifts.
-- Implemented drawing of the Windows system accent outline around the pinned window overlay with an 8px corner radius, drawn only when it has active foreground focus.
-- Added unit tests:
-  - `test_blit_pixmap` to verify correctness of blitting.
-  - `test_always_on_top_overlay_updates_outline_on_focus_change` to verify that overlay redraws with the outline border on target window focus.
-  - `test_controller_topmost_toggle` updated to verify 8px taller top side offset dimensions on the overlay.
-- All 33 unit and integration tests compile and pass successfully.
+- Modified `update_pinned_overlay_graphics` in `src/app/controller.rs` to render the focused active accent outline border with a thickness of 3.0px (1px thicker than the original 2.0px).
+- Altered the opacity of the active accent outline border to 75% (alpha = 191) by converting system accent color float values to RGBA8 format.
+- Added `last_pixels` storage to `MockOverlayManager` in `src/traits.rs` to allow test capture of overlay pixels.
+- Added a target unit test `test_always_on_top_overlay_focus_outline_thickness_and_opacity` checking that the focused border is drawn with exactly 191 alpha (75% opacity) and covering y=2 (confirming >=3.0px thickness).
+- All 34 unit and integration tests compile and pass successfully.
 
 ## 3. Current Task State
-- **Active Task:** Always-on-top focus outline highlight feature with 8px top extension and 8px rounded corners complete.
-- **Status:** Staged changes ready to be committed on branch `feature/always-on-top-accent-outline`.
+- **Active Task:** Accent outline modifications complete.
+- **Status:** Uncommitted changes ready to be committed on branch `feature/always-on-top-accent-outline`.
 
 ## 4. Pending / Next Steps
 - Commit the changes on `feature/always-on-top-accent-outline`.
-- Merge the branch into `dev` and push to remote.
+- Merge the branch into `dev`/`main` (once authorized by the user).
 
 ## 5. System State & Compile Verification
 - **Code compiles:** Yes (`cargo check` and `cargo build` successful)
-- **Tests passing:** Yes (`cargo test` successful: 33 tests passed)
+- **Tests passing:** Yes (`cargo test` successful: 34 tests passed)

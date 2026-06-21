@@ -85,6 +85,7 @@ pub struct MockOverlayManager {
     pub overlays: Mutex<Vec<(HWND, i32, i32, i32, i32)>>,
     pub last_updated: Mutex<Option<(HWND, usize)>>, // (HWND, size of pixels)
     pub last_pixel_sum: Mutex<Option<(HWND, usize)>>,
+    pub last_pixels: Mutex<Option<Vec<u8>>>,
 }
 
 impl Default for MockOverlayManager {
@@ -93,6 +94,7 @@ impl Default for MockOverlayManager {
             overlays: Mutex::new(Vec::new()),
             last_updated: Mutex::new(None),
             last_pixel_sum: Mutex::new(None),
+            last_pixels: Mutex::new(None),
         }
     }
 }
@@ -108,6 +110,7 @@ impl OverlayManager for MockOverlayManager {
         *self.last_updated.lock().unwrap() = Some((hwnd, pixels.len()));
         let sum: usize = pixels.iter().map(|&b| b as usize).sum();
         *self.last_pixel_sum.lock().unwrap() = Some((hwnd, sum));
+        *self.last_pixels.lock().unwrap() = Some(pixels.to_vec());
         Ok(())
     }
 

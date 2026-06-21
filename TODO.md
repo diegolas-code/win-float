@@ -61,3 +61,8 @@ Follow the TDD cycle strictly: write failing test -> verify -> write minimal imp
   - Draw system accent outline around the overlay only when the target window is focused.
   - Remove unused transparency warning threshold functions.
   - Verify with unit tests.
+- [x] **Task 16: Adjust focus accent outline thickness and opacity**
+  - Increase outline thickness to 3.0px (1px thicker).
+  - Set outline opacity to 75% (alpha 191).
+  - Add test verifying thickness and opacity of outline pixels in mock overlay manager.
+  - Verify with unit tests.
