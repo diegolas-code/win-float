@@ -370,4 +370,59 @@ mod tests {
         let modified_sum: usize = canvas.pixels().iter().map(|&b| b as usize).sum();
         assert!(modified_sum > 0); // should fail because dummy does not draw
     }
+
+    #[test]
+    fn test_blit_pixmap() {
+        let mut dest = Pixmap::new(10, 10).unwrap();
+        dest.fill(Color::TRANSPARENT);
+        
+        let mut src = Pixmap::new(2, 2).unwrap();
+        src.fill(Color::from_rgba8(255, 0, 0, 255)); // Solid Red
+        
+        blit_pixmap(&mut dest, &src, 4, 4);
+        
+        let idx_0_0 = 0;
+        let idx_4_4 = ((4 * 10 + 4) * 4) as usize;
+        
+        assert_eq!(&dest.data()[idx_0_0..idx_0_0+4], &[0, 0, 0, 0]);
+        assert_eq!(&dest.data()[idx_4_4..idx_4_4+4], &[255, 0, 0, 255]);
+    }
 }
+
+/// Blits a source Pixmap onto a destination Pixmap at (dx, dy).
+pub fn blit_pixmap(dest: &mut Pixmap, src: &Pixmap, dx: u32, dy: u32) {
+    let dest_w = dest.width();
+    let dest_h = dest.height();
+    let src_w = src.width();
+    let src_h = src.height();
+    
+    let dest_data = dest.data_mut();
+    let src_data = src.data();
+    
+    for y in 0..src_h {
+        let dest_y = dy + y;
+        if dest_y >= dest_h {
+            break;
+        }
+        for x in 0..src_w {
+            let dest_x = dx + x;
+            if dest_x >= dest_w {
+                break;
+            }
+            
+            let src_idx = ((y * src_w + x) * 4) as usize;
+            let dest_idx = ((dest_y * dest_w + dest_x) * 4) as usize;
+            
+            let src_a = src_data[src_idx + 3] as f32 / 255.0;
+            if src_a <= 0.0 {
+                continue;
+            }
+            let factor = 1.0 - src_a;
+            dest_data[dest_idx] = (src_data[src_idx] as f32 + dest_data[dest_idx] as f32 * factor).clamp(0.0, 255.0).round() as u8;
+            dest_data[dest_idx + 1] = (src_data[src_idx + 1] as f32 + dest_data[dest_idx + 1] as f32 * factor).clamp(0.0, 255.0).round() as u8;
+            dest_data[dest_idx + 2] = (src_data[src_idx + 2] as f32 + dest_data[dest_idx + 2] as f32 * factor).clamp(0.0, 255.0).round() as u8;
+            dest_data[dest_idx + 3] = (src_data[src_idx + 3] as f32 + dest_data[dest_idx + 3] as f32 * factor).clamp(0.0, 255.0).round() as u8;
+        }
+    }
+}
+

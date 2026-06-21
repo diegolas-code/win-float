@@ -4,27 +4,28 @@ This document tracks the project state at the end of each development session. I
 
 ## 1. Last Updated
 - **Date:** 2026-06-21
-- **Task Reference:** Feature — Seed Transparency Modal Slider from Current Window Opacity
+- **Task Reference:** Feature — Always-On-Top Focused Window Accent Outline
 
 ## 2. Session Achievements
-- Implemented transparency query on entering modal: When hitting the transparency hotkey, the application now queries the active window's current transparency style attributes (via `GetLayeredWindowAttributes`).
-- Added inverse conversion `alpha_to_percentage(alpha: u8) -> u8` in `src/transparency_calc.rs` to calculate the percentage from the Windows alpha byte, ensuring a correct round-trip.
-- Seeded both the physics slider state and the initial overlay state using the current opacity percentage (falling back to 100% if the window is not yet layered or does not have an alpha value, and clamping to a minimum of 60%).
-- Updated `MockWindowManager` inside `src/traits.rs` to support pre-setting mock style info for testing.
+- Removed the planned (but unused in code) 15% transparency warning threshold outline, deleting its calculation helpers and tests.
+- Re-architected pin overlays: Pin overlays now span the entire target window (`rect.width()` and `rect.height()`) instead of 32x32.
+- Added `blit_pixmap` utility to allow drawing the pin icon in the top-right corner of the window-sized canvas.
+- Hooked `EVENT_SYSTEM_FOREGROUND` in `WindowEventTracker` to track foreground focus changes.
+- Dispatched `WM_TACTILE_FOCUS_CHANGED` to update overlay graphics whenever focus shifts.
+- Implemented drawing of the Windows system accent outline around the pinned window overlay only when it has active foreground focus.
 - Added unit tests:
-  - `test_alpha_to_percentage` to verify correctness and round-trip conversion bounds.
-  - `test_modal_slider_seeds_from_existing_transparency` to verify the application controller seeds the slider percentage correctly from an already-transparent window.
-- Documented in `.history/history_020.md`.
-- All 32 tests pass successfully.
+  - `test_blit_pixmap` to verify correctness of blitting.
+  - `test_always_on_top_overlay_updates_outline_on_focus_change` to verify that overlay redraws with the outline border on target window focus.
+- All 33 unit and integration tests compile and pass successfully.
 
 ## 3. Current Task State
-- **Active Task:** Seeding slider from existing transparency feature complete and committed.
-- **Status:** Committed on branch `feature/slider-initial-transparency` (working tree clean).
+- **Active Task:** Always-on-top focus outline highlight feature complete.
+- **Status:** Staged changes ready to be committed on branch `feature/always-on-top-accent-outline`.
 
 ## 4. Pending / Next Steps
-- Merge `feature/slider-initial-transparency` into `dev` and/or `master`.
-- Run manual validation on Windows to ensure visual behavior is fully smooth when re-triggering transparency modal.
+- Commit the changes on `feature/always-on-top-accent-outline`.
+- Merge the branch into `dev` and push to remote.
 
 ## 5. System State & Compile Verification
 - **Code compiles:** Yes (`cargo check` and `cargo build` successful)
-- **Tests passing:** Yes (`cargo test` successful: 32 tests passed)
+- **Tests passing:** Yes (`cargo test` successful: 33 tests passed)

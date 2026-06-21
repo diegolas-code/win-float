@@ -21,11 +21,7 @@ pub fn percentage_to_alpha(percentage: u8) -> u8 {
 pub fn alpha_to_percentage(alpha: u8) -> u8 {
     ((alpha as u16 * 100 + 127) / 255) as u8
 }
-
-/// Checks if the opacity percentage is below the warning threshold (15%).
-pub fn is_below_warning_threshold(percentage: u8) -> bool {
-    percentage < 15
-}
+// Removed is_below_warning_threshold as per feature changes.
 
 #[cfg(test)]
 mod tests {
@@ -58,13 +54,5 @@ mod tests {
         assert_eq!(alpha_to_percentage(percentage_to_alpha(75)), 75);
         assert_eq!(alpha_to_percentage(percentage_to_alpha(60)), 60);
         assert_eq!(alpha_to_percentage(percentage_to_alpha(100)), 100);
-    }
-
-    #[test]
-    fn test_is_below_warning_threshold() {
-        assert_eq!(is_below_warning_threshold(0), true);
-        assert_eq!(is_below_warning_threshold(14), true);
-        assert_eq!(is_below_warning_threshold(15), false);
-        assert_eq!(is_below_warning_threshold(50), false);
     }
 }

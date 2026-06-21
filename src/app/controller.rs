@@ -3,7 +3,7 @@ use std::time::Instant;
 use crate::traits::{WindowManager, InputHook, OverlayManager, EventTracker};
 use crate::state_machine::{StateMachine, Mode, AdjustmentAction, Transition};
 use crate::platform::hook::WM_TACTILE_KEY_EVENT;
-use crate::app::tracker::{WM_TACTILE_WINDOW_MOVED, WM_TACTILE_WINDOW_CLOSED};
+use crate::app::tracker::{WM_TACTILE_WINDOW_MOVED, WM_TACTILE_WINDOW_CLOSED, WM_TACTILE_FOCUS_CHANGED};
 use windows::Win32::Foundation::{HWND, RECT, BOOL};
 use windows::Win32::UI::WindowsAndMessaging::{
     GetWindowRect, GetMessageW, MSG, WM_HOTKEY, WM_TIMER, SetTimer, KillTimer,
@@ -161,6 +161,9 @@ where
                 } else if msg.message == WM_TACTILE_WINDOW_CLOSED {
                     let target_hwnd = HWND(msg.wParam.0 as isize);
                     let _ = self.handle_window_closed_event(target_hwnd);
+                } else if msg.message == WM_TACTILE_FOCUS_CHANGED {
+                    let target_hwnd = HWND(msg.wParam.0 as isize);
+                    let _ = self.handle_focus_changed(target_hwnd);
                 }
 
                 use windows::Win32::UI::WindowsAndMessaging::{TranslateMessage, DispatchMessageW};
@@ -188,19 +191,14 @@ where
 
                 if new_state {
                     let rect = get_window_rect_helper(active).unwrap_or(crate::hud_layout::Rect::new(0, 0, 800, 600));
-                    let pin_w = 32;
-                    let pin_h = 32;
-                    let (px, py) = crate::hud_layout::calculate_pin_position(rect, pin_w, pin_h, 10, 10);
-                    let overlay = self.overlay_manager.create_overlay(active, px, py, pin_w, pin_h)?;
+                    let width = rect.width();
+                    let height = rect.height();
+                    let overlay = self.overlay_manager.create_overlay(active, rect.left, rect.top, width, height)?;
 
-                    let mut canvas = crate::ui::overlay::Canvas::new(pin_w as u32, pin_h as u32)?;
-                    let accent_color = get_system_accent_color();
-                    crate::ui::draw::draw_pin(&mut canvas, accent_color)?;
-
-                    self.overlay_manager.update_overlay(overlay, canvas.pixels(), pin_w as u32, pin_h as u32)?;
+                    self.update_pinned_overlay_graphics(active, overlay, rect)?;
                     self.event_tracker.start_tracking(active, overlay)?;
                     self.pinned_overlays.insert(active.0, overlay);
-                    println!("[Win-Float] [Info] Pinned window HWND 0x{:X}. Created overlay HWND 0x{:X} (32x32 bee icon).", active.0, overlay.0);
+                    println!("[Win-Float] [Info] Pinned window HWND 0x{:X}. Created overlay HWND 0x{:X} spanning the entire window.", active.0, overlay.0);
                 } else if let Some(overlay) = self.pinned_overlays.remove(&active.0) {
                     self.event_tracker.stop_tracking(active);
                     self.overlay_manager.destroy_overlay(overlay);
@@ -467,16 +465,15 @@ where
 
         if let Some(overlay) = overlay_hwnd {
             let rect = get_window_rect_helper(target_hwnd).unwrap_or(crate::hud_layout::Rect::new(0, 0, 800, 600));
-            let (ox, oy, ow, oh) = if self.modal_target == Some(target_hwnd) {
+            let is_modal = self.modal_target == Some(target_hwnd);
+
+            let (ox, oy, ow, oh) = if is_modal {
                 let hud_w = 200;
                 let hud_h = 80;
                 let (hx, hy) = crate::hud_layout::calculate_hud_position(rect, hud_w, hud_h);
                 (hx, hy, hud_w, hud_h)
             } else {
-                let pin_w = 32;
-                let pin_h = 32;
-                let (px, py) = crate::hud_layout::calculate_pin_position(rect, pin_w, pin_h, 10, 10);
-                (px, py, pin_w, pin_h)
+                (rect.left, rect.top, rect.width(), rect.height())
             };
 
             unsafe {
@@ -491,6 +488,11 @@ where
                     SWP_NOZORDER | SWP_NOACTIVATE,
                 );
             }
+
+            if !is_modal {
+                self.update_pinned_overlay_graphics(target_hwnd, overlay, rect)?;
+            }
+
             println!("[Win-Float] [Info] Tracked window HWND 0x{:X} moved. Repositioning overlay HWND 0x{:X} to coordinates (x: {}, y: {}).", target_hwnd.0, overlay.0, ox, oy);
         }
         Ok(())
@@ -513,6 +515,58 @@ where
             self.event_tracker.stop_tracking(target_hwnd);
             self.overlay_manager.destroy_overlay(overlay);
         }
+        Ok(())
+    }
+
+    pub fn handle_focus_changed(&mut self, target_hwnd: HWND) -> Result<(), String> {
+        if let Some(&overlay) = self.pinned_overlays.get(&target_hwnd.0) {
+            let rect = get_window_rect_helper(target_hwnd).unwrap_or(crate::hud_layout::Rect::new(0, 0, 800, 600));
+            self.update_pinned_overlay_graphics(target_hwnd, overlay, rect)?;
+        }
+        Ok(())
+    }
+
+    pub fn update_pinned_overlay_graphics(
+        &mut self,
+        target_hwnd: HWND,
+        overlay_hwnd: HWND,
+        rect: crate::hud_layout::Rect,
+    ) -> Result<(), String> {
+        let width = rect.width();
+        let height = rect.height();
+        if width <= 0 || height <= 0 {
+            return Ok(());
+        }
+
+        let is_focused = self.window_manager.get_active_window()
+            .map(|act| act == target_hwnd)
+            .unwrap_or(false);
+
+        let mut canvas = crate::ui::overlay::Canvas::new(width as u32, height as u32)?;
+        canvas.clear(Color::TRANSPARENT);
+
+        let accent_color = get_system_accent_color();
+
+        // If the window has focus, draw the accent outline border
+        if is_focused {
+            crate::ui::draw::draw_border(&mut canvas, accent_color, 2.0)?;
+        }
+
+        // Draw the pin icon in the top-right corner
+        let pin_w = 32;
+        let pin_h = 32;
+        let margin_x = 10;
+        let margin_y = 10;
+        let px = width - pin_w - margin_x;
+        let py = margin_y;
+
+        if px >= 0 && py >= 0 {
+            let mut pin_canvas = crate::ui::overlay::Canvas::new(pin_w as u32, pin_h as u32)?;
+            crate::ui::draw::draw_pin(&mut pin_canvas, accent_color)?;
+            crate::ui::draw::blit_pixmap(canvas.pixmap_mut(), pin_canvas.pixmap(), px as u32, py as u32);
+        }
+
+        self.overlay_manager.update_overlay(overlay_hwnd, canvas.pixels(), width as u32, height as u32)?;
         Ok(())
     }
 }
@@ -700,6 +754,46 @@ mod tests {
         // slider_percentage must be seeded at 75, not 100
         assert_eq!(controller.slider_percentage as u8, 75,
             "slider should start at the window's existing transparency (75%), not 100%");
+    }
+
+    #[test]
+    fn test_always_on_top_overlay_updates_outline_on_focus_change() {
+        let wm = MockWindowManager::default();
+        let target = HWND(12345);
+        *wm.active_window.lock().unwrap() = target;
+
+        let hook = MockInputHook;
+        let om = MockOverlayManager::default();
+        let tracker = MockEventTracker::default();
+        let mut controller = AppController::new(wm, hook, om, tracker).unwrap();
+
+        // Pin the window
+        controller.handle_hotkey(HOTKEY_TOPMOST_ID).unwrap();
+        assert_eq!(controller.pinned_overlays.len(), 1);
+        let overlay_hwnd = controller.pinned_overlays.get(&target.0).copied().unwrap();
+
+        // 1. Initially focused (since target was active) -> overlay should have higher pixel sum due to outline
+        let last_sum_focused = {
+            let last_update = controller.overlay_manager.last_pixel_sum.lock().unwrap();
+            assert!(last_update.is_some());
+            let (h, sum) = last_update.unwrap();
+            assert_eq!(h, overlay_hwnd);
+            sum
+        };
+
+        // 2. Change active window to something else (e.g. HWND(999)) -> unfocused
+        *controller.window_manager.active_window.lock().unwrap() = HWND(999);
+        controller.handle_focus_changed(target).unwrap();
+
+        let last_sum_unfocused = {
+            let last_update = controller.overlay_manager.last_pixel_sum.lock().unwrap();
+            let (h, sum) = last_update.unwrap();
+            assert_eq!(h, overlay_hwnd);
+            sum
+        };
+        
+        // Unfocused should have less colored pixels than focused because the outline is removed
+        assert!(last_sum_focused > last_sum_unfocused, "Focused sum: {}, Unfocused sum: {}", last_sum_focused, last_sum_unfocused);
     }
 }
 

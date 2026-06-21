@@ -10,6 +10,7 @@
 * Toggles the topmost state of the active foreground window.
 * Draws a transparent, click-through pin overlay in the top-right corner of the target window.
 * **Passive Window Tracking:** Real-time event tracking updates the pin overlay's position as the target window is dragged, resized, or minimized.
+* **Focused Accent Outline:** When a pinned always-on-top window is focused, a thin outline matching the Windows system accent color is drawn around it to indicate its focus state. The outline automatically disappears when it loses focus.
 
 ### 2. Transparency Adjustment Modal (`Shift + Win + F11`)
 * Enters a dedicated block-input state targeting the active foreground window.
@@ -18,7 +19,6 @@
   * `Right` / `Up` / `+`: Increase opacity (more opaque).
   * **Any other key:** Commits the current transparency setting, exits the modal, and restores normal keyboard input.
 * **Physics-Based Slider HUD:** Displays a floating HUD overlay near the window showing the current opacity percentage with a smooth, physics-animated slider bar.
-* **Adaptive Accent Outline:** If opacity is set below `15%`, a thin outline matching the Windows system accent color is drawn around the target window (at 60% opacity for active window, 30% for inactive window) to keep track of highly transparent windows.
 * **Seeding from Current State:** Re-entering the modal automatically queries the window's existing opacity and seeds the slider, avoiding visual jumps.
 
 ---

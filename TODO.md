@@ -55,3 +55,9 @@ Follow the TDD cycle strictly: write failing test -> verify -> write minimal imp
 - [x] **Task 14: Slider seeds from existing window transparency**
   - Read existing window layered style/alpha to seed the slider percentage when entering the transparency modal.
   - Verify with unit tests.
+- [x] **Task 15: Always-On-Top focused window accent outline**
+  - Size pin overlay window to cover the target window.
+  - Listen for active/foreground window changes via `EVENT_SYSTEM_FOREGROUND` and dispatch `WM_TACTILE_FOCUS_CHANGED` events.
+  - Draw system accent outline around the overlay only when the target window is focused.
+  - Remove unused transparency warning threshold functions.
+  - Verify with unit tests.

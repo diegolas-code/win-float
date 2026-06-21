@@ -84,6 +84,7 @@ impl WindowManager for MockWindowManager {
 pub struct MockOverlayManager {
     pub overlays: Mutex<Vec<(HWND, i32, i32, i32, i32)>>,
     pub last_updated: Mutex<Option<(HWND, usize)>>, // (HWND, size of pixels)
+    pub last_pixel_sum: Mutex<Option<(HWND, usize)>>,
 }
 
 impl Default for MockOverlayManager {
@@ -91,6 +92,7 @@ impl Default for MockOverlayManager {
         Self {
             overlays: Mutex::new(Vec::new()),
             last_updated: Mutex::new(None),
+            last_pixel_sum: Mutex::new(None),
         }
     }
 }
@@ -104,6 +106,8 @@ impl OverlayManager for MockOverlayManager {
 
     fn update_overlay(&self, hwnd: HWND, pixels: &[u8], _width: u32, _height: u32) -> Result<(), String> {
         *self.last_updated.lock().unwrap() = Some((hwnd, pixels.len()));
+        let sum: usize = pixels.iter().map(|&b| b as usize).sum();
+        *self.last_pixel_sum.lock().unwrap() = Some((hwnd, sum));
         Ok(())
     }
 

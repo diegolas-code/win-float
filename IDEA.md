@@ -9,6 +9,7 @@
 - **Behavior:** Toggles the topmost state of the active window.
 - **Marker:** Draws a small, click-through pin icon/emoji in the top-right corner of the window.
 - **Tracking:** The pin overlay automatically tracks the window as it moves or resizes, instantly disappearing if the window is closed.
+- **Focused Accent Outline:** When a pinned always-on-top window is focused, a thin outline matching the Windows system accent color is drawn around it to indicate its priority and focus state. The outline fades out automatically when the window loses focus.
 
 ### 2. Transparency Adjustment Modal (`Shift+Win+F11`)
 - **Behavior:** Enters a modal state where keyboard inputs are captured specifically to adjust the transparency of the active window.
@@ -20,6 +21,3 @@
   - Quick tap: 5% change.
   - Hold down key: Smooth, continuous scrolling change.
 - **Visual HUD:** Displays a floating widget near the window showing the current opacity percentage (e.g. `85%`) along with a visual slider bar.
-- **Border Indicator:** When transparency drops below 15%, a thin outline matching the Windows system accent color is drawn around the target window:
-  - **30% opacity** when the window is inactive.
-  - **60% opacity** when the window is active.
