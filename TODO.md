@@ -12,7 +12,7 @@ Follow the TDD cycle strictly: write failing test -> verify -> write minimal imp
   - Implement `WindowManager` trait.
 
 ## Phase 2: Core Logics (TDD)
-- [ ] **Task 3: Transparency Math (`src/transparency_calc.rs`)**
+- [x] **Task 3: Transparency Math (`src/transparency_calc.rs`)**
   - Write failing unit tests for percentage-to-alpha conversions, clamping, 15% warning thresholds.
   - Implement minimal functions to pass.
   - Verify with `cargo test`.
