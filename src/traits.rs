@@ -14,7 +14,7 @@ pub trait InputHook {
 }
 
 pub trait OverlayManager {
-    fn create_overlay(&self, x: i32, y: i32, width: i32, height: i32) -> Result<HWND, String>;
+    fn create_overlay(&self, parent: HWND, x: i32, y: i32, width: i32, height: i32) -> Result<HWND, String>;
     fn update_overlay(&self, hwnd: HWND, pixels: &[u8], width: u32, height: u32) -> Result<(), String>;
     fn destroy_overlay(&self, hwnd: HWND);
 }
@@ -82,7 +82,7 @@ impl Default for MockOverlayManager {
 }
 
 impl OverlayManager for MockOverlayManager {
-    fn create_overlay(&self, x: i32, y: i32, width: i32, height: i32) -> Result<HWND, String> {
+    fn create_overlay(&self, _parent: HWND, x: i32, y: i32, width: i32, height: i32) -> Result<HWND, String> {
         let fake_hwnd = HWND(1000 + self.overlays.lock().unwrap().len() as isize);
         self.overlays.lock().unwrap().push((fake_hwnd, x, y, width, height));
         Ok(fake_hwnd)

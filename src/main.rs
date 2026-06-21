@@ -14,12 +14,20 @@ use app::tracker::WindowEventTracker;
 use app::controller::AppController;
 
 use windows::core::w;
-use windows::Win32::Foundation::{HWND, HINSTANCE, LRESULT, WPARAM, LPARAM};
+use windows::Win32::Foundation::{HWND, HINSTANCE, LRESULT, WPARAM, LPARAM, BOOL, FALSE};
 use windows::Win32::UI::WindowsAndMessaging::{
     RegisterClassExW, CreateWindowExW, DefWindowProcW, WNDCLASSEXW, CS_HREDRAW, CS_VREDRAW,
     HWND_MESSAGE, WS_POPUP, HMENU,
 };
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
+use windows::Win32::System::Console::{SetConsoleCtrlHandler, CTRL_C_EVENT};
+
+unsafe extern "system" fn ctrl_handler(ctrl_type: u32) -> BOOL {
+    if ctrl_type == CTRL_C_EVENT {
+        std::process::exit(0);
+    }
+    FALSE
+}
 
 unsafe extern "system" fn message_wnd_proc(
     hwnd: HWND,
@@ -73,6 +81,9 @@ fn create_message_window() -> Result<HWND, String> {
 }
 
 fn main() -> Result<(), String> {
+    unsafe {
+        let _ = SetConsoleCtrlHandler(Some(ctrl_handler), true);
+    }
     let msg_hwnd = create_message_window()?;
     let wm = LiveWindowManager;
     let hook = LiveInputHook::new(msg_hwnd);

@@ -134,7 +134,7 @@ impl WindowManager for LiveWindowManager {
 pub struct LiveOverlayManager;
 
 impl OverlayManager for LiveOverlayManager {
-    fn create_overlay(&self, x: i32, y: i32, width: i32, height: i32) -> Result<HWND, String> {
+    fn create_overlay(&self, parent: HWND, x: i32, y: i32, width: i32, height: i32) -> Result<HWND, String> {
         register_overlay_class()?;
 
         let hinstance = unsafe { GetModuleHandleW(None) }
@@ -150,7 +150,7 @@ impl OverlayManager for LiveOverlayManager {
                 y,
                 width,
                 height,
-                HWND(0),
+                parent,
                 HMENU(0),
                 HINSTANCE(hinstance.0),
                 None,
@@ -328,7 +328,7 @@ mod tests {
     #[test]
     fn test_live_overlay_manager_lifecycle() {
         let om = LiveOverlayManager;
-        let overlay = om.create_overlay(10, 10, 100, 100);
+        let overlay = om.create_overlay(HWND(0), 10, 10, 100, 100);
         assert!(overlay.is_ok());
         let hwnd = overlay.unwrap();
         assert_ne!(hwnd.0, 0);

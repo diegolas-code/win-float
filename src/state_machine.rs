@@ -38,7 +38,7 @@ impl StateMachine {
     }
 
     pub fn enter_modal(&mut self, hwnd: HWND, initial_percentage: u8) -> Transition {
-        let initial_clamped = initial_percentage.min(100);
+        let initial_clamped = initial_percentage.clamp(60, 100);
         self.mode = Mode::TransparencyModal {
             target_hwnd: hwnd,
             current_percentage: initial_clamped,
@@ -55,10 +55,10 @@ impl StateMachine {
             Mode::TransparencyModal { target_hwnd, current_percentage } => {
                 match action {
                     AdjustmentAction::Decrease => {
-                        let new_percentage = if current_percentage >= 5 {
-                            current_percentage - 5
+                        let new_percentage = if current_percentage >= 60 + 2 {
+                            current_percentage - 2
                         } else {
-                            0
+                            60
                         };
                         self.mode = Mode::TransparencyModal {
                             target_hwnd,
@@ -70,8 +70,8 @@ impl StateMachine {
                         }
                     }
                     AdjustmentAction::Increase => {
-                        let new_percentage = if current_percentage <= 95 {
-                            current_percentage + 5
+                        let new_percentage = if current_percentage + 2 <= 100 {
+                            current_percentage + 2
                         } else {
                             100
                         };
@@ -168,7 +168,7 @@ mod tests {
             trans,
             Transition::Changed {
                 target_hwnd: hwnd,
-                new_percentage: 75,
+                new_percentage: 78,
             }
         );
 
@@ -195,7 +195,7 @@ mod tests {
             trans,
             Transition::Changed {
                 target_hwnd: hwnd,
-                new_percentage: 0,
+                new_percentage: 60,
             }
         );
         let trans_further = sm.handle_action(AdjustmentAction::Decrease);
@@ -203,13 +203,13 @@ mod tests {
             trans_further,
             Transition::Changed {
                 target_hwnd: hwnd,
-                new_percentage: 0,
+                new_percentage: 60,
             }
         );
 
         // Clamp max
         let mut sm2 = StateMachine::new();
-        sm2.enter_modal(hwnd, 98);
+        sm2.enter_modal(hwnd, 99);
         let trans2 = sm2.handle_action(AdjustmentAction::Increase);
         assert_eq!(
             trans2,

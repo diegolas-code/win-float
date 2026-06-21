@@ -150,57 +150,128 @@ pub fn draw_hud(
     Ok(())
 }
 
-/// Draws the visual pin icon onto the canvas.
+/// Draws the visual pin icon (bee) onto the canvas.
 pub fn draw_pin(
     canvas: &mut Canvas,
-    accent_color: Color,
+    _accent_color: Color,
 ) -> Result<(), String> {
     let width = canvas.width() as f32;
     let height = canvas.height() as f32;
     let pixmap = canvas.pixmap_mut();
 
-    let cx = width / 2.0;
-    let cy = height * 0.35;
-    let r = width * 0.25;
+    let cx = width / 2.0; // 12.0
+    let cy = height / 2.0; // 12.0
 
-    let mut paint = Paint::default();
-    paint.set_color(accent_color);
-    paint.anti_alias = true;
-
-    // 1. Draw circular pinhead
-    let path_head = {
+    // 1. Draw Wings (drawn behind the body)
+    // Left Wing (translucent light blue)
+    let left_wing_path = {
         let mut pb = PathBuilder::new();
-        pb.push_circle(cx, cy, r);
+        pb.push_circle(cx - 5.0, cy - 3.0, 4.5);
         pb.finish()
     };
-    if let Some(ref path) = path_head {
-        pixmap.fill_path(path, &paint, tiny_skia::FillRule::Winding, Transform::identity(), None);
+    // Right Wing
+    let right_wing_path = {
+        let mut pb = PathBuilder::new();
+        pb.push_circle(cx + 5.0, cy - 3.0, 4.5);
+        pb.finish()
+    };
+
+    let mut wing_paint = Paint::default();
+    wing_paint.set_color(Color::from_rgba8(200, 230, 255, 180));
+    wing_paint.anti_alias = true;
+
+    if let Some(ref path) = left_wing_path {
+        pixmap.fill_path(path, &wing_paint, tiny_skia::FillRule::Winding, Transform::identity(), None);
+    }
+    if let Some(ref path) = right_wing_path {
+        pixmap.fill_path(path, &wing_paint, tiny_skia::FillRule::Winding, Transform::identity(), None);
     }
 
-    // 2. Draw shaft/needle pointing downwards
-    let path_shaft = {
+    // 2. Draw Stinger (black triangle pointing down)
+    let stinger_path = {
         let mut pb = PathBuilder::new();
-        pb.move_to(cx - 2.0, cy);
-        pb.line_to(cx + 2.0, cy);
-        pb.line_to(cx, height - 2.0);
+        pb.move_to(cx - 2.0, cy + 6.0);
+        pb.line_to(cx + 2.0, cy + 6.0);
+        pb.line_to(cx, cy + 10.0);
         pb.close();
         pb.finish()
     };
-    if let Some(ref path) = path_shaft {
-        pixmap.fill_path(path, &paint, tiny_skia::FillRule::Winding, Transform::identity(), None);
+    let mut black_paint = Paint::default();
+    black_paint.set_color(Color::from_rgba8(20, 20, 20, 255));
+    black_paint.anti_alias = true;
+
+    if let Some(ref path) = stinger_path {
+        pixmap.fill_path(path, &black_paint, tiny_skia::FillRule::Winding, Transform::identity(), None);
     }
 
-    // 3. Draw a white highlight spot on the head to make it look premium/glossy
-    let mut paint_hl = Paint::default();
-    paint_hl.set_color(Color::from_rgba8(255, 255, 255, 180));
-    paint_hl.anti_alias = true;
-    let path_hl = {
+    // 3. Draw Body (yellow oval using circle + vertical scaling)
+    let body_path = {
         let mut pb = PathBuilder::new();
-        pb.push_circle(cx - r * 0.3, cy - r * 0.3, r * 0.25);
+        pb.push_circle(cx, cy + 1.0, 6.0);
         pb.finish()
     };
-    if let Some(ref path) = path_hl {
-        pixmap.fill_path(path, &paint_hl, tiny_skia::FillRule::Winding, Transform::identity(), None);
+    let mut body_paint = Paint::default();
+    body_paint.set_color(Color::from_rgba8(255, 205, 0, 255)); // bright yellow
+    body_paint.anti_alias = true;
+
+    if let Some(ref path) = body_path {
+        let t = Transform::from_scale(0.85, 1.15).post_translate(cx * (1.0 - 0.85), (cy + 1.0) * (1.0 - 1.15));
+        pixmap.fill_path(path, &body_paint, tiny_skia::FillRule::Winding, t, None);
+    }
+
+    // 4. Draw Stripes (dark horizontal bands across the body)
+    // Stripe 1
+    let stripe1_rect = SkiaRect::from_ltrb(cx - 4.2, cy - 2.0, cx + 4.2, cy - 0.5)
+        .ok_or_else(|| "Invalid stripe dimensions".to_string())?;
+    let stripe1_path = PathBuilder::from_rect(stripe1_rect);
+    pixmap.fill_path(&stripe1_path, &black_paint, tiny_skia::FillRule::Winding, Transform::identity(), None);
+
+    // Stripe 2
+    let stripe2_rect = SkiaRect::from_ltrb(cx - 4.8, cy + 1.0, cx + 4.8, cy + 2.5)
+        .ok_or_else(|| "Invalid stripe dimensions".to_string())?;
+    let stripe2_path = PathBuilder::from_rect(stripe2_rect);
+    pixmap.fill_path(&stripe2_path, &black_paint, tiny_skia::FillRule::Winding, Transform::identity(), None);
+
+    // Stripe 3
+    let stripe3_rect = SkiaRect::from_ltrb(cx - 4.0, cy + 4.0, cx + 4.0, cy + 5.0)
+        .ok_or_else(|| "Invalid stripe dimensions".to_string())?;
+    let stripe3_path = PathBuilder::from_rect(stripe3_rect);
+    pixmap.fill_path(&stripe3_path, &black_paint, tiny_skia::FillRule::Winding, Transform::identity(), None);
+
+    // 5. Draw Head (black circle)
+    let head_path = {
+        let mut pb = PathBuilder::new();
+        pb.push_circle(cx, cy - 5.5, 3.2);
+        pb.finish()
+    };
+    if let Some(ref path) = head_path {
+        pixmap.fill_path(path, &black_paint, tiny_skia::FillRule::Winding, Transform::identity(), None);
+    }
+
+    // 6. Draw Antennae (small black strokes)
+    let antenna_left = {
+        let mut pb = PathBuilder::new();
+        pb.move_to(cx - 1.5, cy - 8.0);
+        pb.quad_to(cx - 3.0, cy - 10.0, cx - 4.5, cy - 9.5);
+        pb.finish()
+    };
+    let antenna_right = {
+        let mut pb = PathBuilder::new();
+        pb.move_to(cx + 1.5, cy - 8.0);
+        pb.quad_to(cx + 3.0, cy - 10.0, cx + 4.5, cy - 9.5);
+        pb.finish()
+    };
+
+    let stroke = Stroke {
+        width: 1.0,
+        ..Default::default()
+    };
+
+    if let Some(ref path) = antenna_left {
+        pixmap.stroke_path(path, &black_paint, &stroke, Transform::identity(), None);
+    }
+    if let Some(ref path) = antenna_right {
+        pixmap.stroke_path(path, &black_paint, &stroke, Transform::identity(), None);
     }
 
     Ok(())

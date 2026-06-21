@@ -158,7 +158,7 @@ where
                     let pin_w = 24;
                     let pin_h = 24;
                     let (px, py) = crate::hud_layout::calculate_pin_position(rect, pin_w, pin_h, 10, 10);
-                    let overlay = self.overlay_manager.create_overlay(px, py, pin_w, pin_h)?;
+                    let overlay = self.overlay_manager.create_overlay(active, px, py, pin_w, pin_h)?;
 
                     let mut canvas = crate::ui::overlay::Canvas::new(pin_w as u32, pin_h as u32)?;
                     let accent_color = get_system_accent_color();
@@ -192,7 +192,7 @@ where
                 let hud_w = 200;
                 let hud_h = 80;
                 let (hx, hy) = crate::hud_layout::calculate_hud_position(rect, hud_w, hud_h);
-                let overlay = self.overlay_manager.create_overlay(hx, hy, hud_w, hud_h)?;
+                let overlay = self.overlay_manager.create_overlay(active, hx, hy, hud_w, hud_h)?;
 
                 let mut canvas = crate::ui::overlay::Canvas::new(hud_w as u32, hud_h as u32)?;
                 let accent = get_system_accent_color();
@@ -367,7 +367,7 @@ mod tests {
         assert_eq!(controller.modal_target, Some(target));
 
         controller.handle_key_input(0x25).unwrap(); // VK_LEFT
-        assert_eq!(*controller.window_manager.transparency.lock().unwrap(), Some((target, 242)));
+        assert_eq!(*controller.window_manager.transparency.lock().unwrap(), Some((target, 250)));
 
         controller.handle_key_input(0x0D).unwrap(); // VK_RETURN
         assert!(controller.hud_overlay.is_none());

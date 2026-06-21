@@ -4,23 +4,23 @@ This document tracks the project state at the end of each development session. I
 
 ## 1. Last Updated
 - **Date:** 2026-06-21
-- **Task Reference:** Phase 5 Complete (Task 12 Complete - Application Entry)
+- **Task Reference:** Bugfixes and Feature Adjustments Complete (Z-Order, Bee Icon, Transparency Clamp, Ctrl+C handling)
 
 ## 2. Session Achievements
-- Switched to working branch `feature/app-entry` checked out from `dev`.
-- Connected all manager components (GDI Overlay Manager, Live Window Manager, Event Tracker, Keyboard Input Hook) inside the entry point `main()`.
-- Implemented a message-only background message window (`HWND_MESSAGE`) in `src/main.rs` to route low-level system keyboard events to the thread-level queue.
-- Configured `#![windows_subsystem = "windows"]` to prevent an active console terminal pop-up when launched.
-- Verified compilation and execution under release profile (`cargo build --release` passes successfully).
-- Verified test outcomes with `cargo test` (all 28 tests passing with no compiler warnings).
+- Switched to working branch `feature/fix-issues` checked out from `dev`.
+- Resolved the Z-order visibility bug by establishing Win32 owner-owned relationship between target windows and overlays (parent `HWND` parameter in `create_overlay`).
+- Hand-drawn a premium vector bee icon (🐝) inside `src/ui/draw.rs` using Skia paths.
+- Reduced transition increments from 5% to 2% for smoother scrolling and clamped transparency minimum to 60%.
+- Integrated console Ctrl+C event listener mapping (`SetConsoleCtrlHandler`) inside `src/main.rs`.
+- Verified test outcomes with `cargo test` (all 28 tests passing).
+- Verified production build compile with `cargo build --release`.
 
 ## 3. Current Task State
-- **Active Task:** Phase 5 completed. All checklist items are done.
-- **Status:** Application is user-testable and ready for production testing.
+- **Active Task:** Bugfixes and Feature Adjustments complete.
+- **Status:** All core implementation tasks and fixes are fully complete.
 
 ## 4. Pending / Next Steps
-- Commit changes on `feature/app-entry`, merge to `dev`, merge `dev` to `master`, and push changes to remote.
-- Perform user-acceptance testing on Windows systems.
+- Commit changes to `feature/fix-issues`, merge to `dev` (and then `master`), and push to GitHub repository.
 
 ## 5. System State & Compile Verification
 - **Code compiles:** Yes (`cargo check` and `cargo build --release` successful)
