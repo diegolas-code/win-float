@@ -20,7 +20,7 @@ Follow the TDD cycle strictly: write failing test -> verify -> write minimal imp
   - Write failing unit tests calculating pin overlays positions (top-right corner of target RECT) and HUD centering layout.
   - Implement layout coordinate logic.
   - Verify with `cargo test`.
-- [ ] **Task 5: State Machine (`src/state_machine.rs`)**
+- [x] **Task 5: State Machine (`src/state_machine.rs`)**
   - Write failing unit tests for `Idle` <-> `TransparencyModal` transitions, and handling target window changes.
   - Implement `AppState` enum and transition methods.
   - Verify with `cargo test`.
