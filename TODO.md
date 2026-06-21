@@ -12,24 +12,24 @@ Follow the TDD cycle strictly: write failing test -> verify -> write minimal imp
   - Implement `WindowManager` trait.
 
 ## Phase 2: Core Logics (TDD)
-- [ ] **Task 3: Transparency Math (`src/transparency_calc.rs`)**
+- [x] **Task 3: Transparency Math (`src/transparency_calc.rs`)**
   - Write failing unit tests for percentage-to-alpha conversions, clamping, 15% warning thresholds.
   - Implement minimal functions to pass.
   - Verify with `cargo test`.
-- [ ] **Task 4: Layout Mathematics (`src/hud_layout.rs`)**
+- [x] **Task 4: Layout Mathematics (`src/hud_layout.rs`)**
   - Write failing unit tests calculating pin overlays positions (top-right corner of target RECT) and HUD centering layout.
   - Implement layout coordinate logic.
   - Verify with `cargo test`.
-- [ ] **Task 5: State Machine (`src/state_machine.rs`)**
+- [x] **Task 5: State Machine (`src/state_machine.rs`)**
   - Write failing unit tests for `Idle` <-> `TransparencyModal` transitions, and handling target window changes.
   - Implement `AppState` enum and transition methods.
   - Verify with `cargo test`.
 
 ## Phase 3: Skia UI Renderer Core
-- [ ] **Task 6: Pixmap Overlay Canvas (`src/ui/overlay.rs`)**
+- [x] **Task 6: Pixmap Overlay Canvas (`src/ui/overlay.rs`)**
   - Write failing tests verifying canvas allocation and pixel boundaries.
   - Implement `Canvas` wrapper around `tiny-skia::Pixmap`.
-- [ ] **Task 7: UI Drawing Helpers (`src/ui/draw.rs`)**
+- [x] **Task 7: UI Drawing Helpers (`src/ui/draw.rs`)**
   - Write tests or validation scripts for drawing a progress bar and text markers into Pixmaps.
   - Implement HUD rendering (percentage text and slider bar), pin icon, and outline border.
 
