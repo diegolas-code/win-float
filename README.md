@@ -12,20 +12,25 @@ This is mostly a learning project to explore Windows APIs and Rust desktop utili
 * Toggles the topmost state of the active foreground window.
 * Draws a transparent, click-through pin overlay in the top-right corner of the target window.
 * **Passive Window Tracking:** Real-time event tracking updates the pin overlay's position as the target window is dragged, resized, or minimized.
-* **Focused Accent Outline:** When a pinned always-on-top window is focused, a thin outline matching the Windows system accent color is drawn around it to indicate its focus state. The outline automatically disappears when it loses focus.
+* **Focused Accent Outline:** When a pinned always-on-top window is focused, a 3px outline matching the Windows system accent color (at 75% opacity) is drawn around it to indicate its focus state. The outline automatically disappears when it loses focus.
+* **Border Offset Matching:** Overlay layout coordinates are padded by 7px at the top (`y = rect.top - 7` and `height = rect.height() + 7`) to float symmetrically over the invisible window resizing borders on Windows 10 & 11.
+* **Maximized & Move/Resize Hiding:**
+  - When the target window is maximized, the outline overlay is completely hidden to avoid drawing over the taskbar or screen edges.
+  - During manual window dragging/resizing modal loops, the overlay is hidden and automatically reappears when the movement concludes.
+  - **Aero Snap Debouncing:** Location changes from system Aero Snapping (e.g. `Win + Arrow keys`) are debounced by 150ms using Win32 event timers on the overlay window handles, immediately hiding the overlay and revealing it only after the window settles at its final destination.
 
 ### 2. Transparency Adjustment Modal (`Shift + Win + F11`)
 * Enters a dedicated block-input state targeting the active foreground window.
 * **Keyboard Navigation:**
-  * `Left` / `Down` / `-`: Decrease opacity (more transparent).
-  * `Right` / `Up` / `+`: Increase opacity (more opaque).
-  * **Any other key:** Commits the current transparency setting, exits the modal, and restores normal keyboard input.
+  - `Left` / `Down` / `-`: Decrease opacity (more transparent).
+  - `Right` / `Up` / `+`: Increase opacity (more opaque).
+  - **Any other key:** Commits the current transparency setting, exits the modal, and restores normal keyboard input.
 * **Physics-Based Slider HUD:** Displays a floating HUD overlay near the window showing the current opacity percentage with a smooth, physics-animated slider bar.
 * **Seeding from Current State:** Re-entering the modal automatically queries the window's existing opacity and seeds the slider, avoiding visual jumps.
 
 ### 3. Shell & System Window Exclusion
 * **Safety Block:** Automatically rejects operations on system components like the Taskbar, system tray notification area, tray clock, overflow tray popup (`^`), Quick Settings panel, Action Center flyouts, volume indicators, desktop backgrounds, and third-party Start menus.
-* **Hierarchical Scanning:** Climbs window owner and ancestor chains to ensure sub-components (such as nested panels or tray buttons) are correctly identified as part of blocked system windows.
+* **Hierarchical Scanning:** Climbs window owner and ancestor chains (including popups, nested browser canvas elements, and owned popups) to ensure focus outline status is correctly inherited and sub-components are not targeted.
 * **Operational Logging:** Prints clear console warnings detailing the Class, Process name, and HWND of the rejected system window.
 
 ---
@@ -35,14 +40,16 @@ This is mostly a learning project to explore Windows APIs and Rust desktop utili
 * **Core Language:** Rust (Edition 2024)
 * **Graphics Rendering:** `tiny-skia` for zero-allocation 2D vector drawings.
 * **Platform APIs (`windows` crate):**
-  * `GetForegroundWindow` / `SetWindowPos` (Topmost state).
-  * `GetWindowLongW` / `SetWindowLongW` / `SetLayeredWindowAttributes` (Window layering and alpha opacity).
-  * `SetWindowsHookExW` (`WH_KEYBOARD_LL` low-level keyboard hook) for capturing layout adjustments without swallowing system-wide keys.
-  * `SetWinEventHook` (`EVENT_OBJECT_LOCATIONCHANGE`, `EVENT_OBJECT_DESTROY`) for location tracking and cleanup.
-  * `DwmGetColorizationColor` (Accent color query).
-  * `SetConsoleCtrlHandler` + `PostThreadMessageW` (Graceful daemon shutdown routing).
-  * `GetAncestor` / `GetWindow` (Window owner and ancestor tree climbing).
-  * `OpenProcess` / `QueryFullProcessImageNameW` (Process executable name query for system window exclusion).
+  - `GetForegroundWindow` / `SetWindowPos` (Topmost state).
+  - `GetWindowLongW` / `SetWindowLongW` / `SetLayeredWindowAttributes` (Window layering and alpha opacity).
+  - `SetWindowsHookExW` (`WH_KEYBOARD_LL` low-level keyboard hook) for capturing layout adjustments without swallowing system-wide keys.
+  - `SetWinEventHook` (`EVENT_OBJECT_LOCATIONCHANGE`, `EVENT_OBJECT_DESTROY`, `EVENT_SYSTEM_FOREGROUND`, `EVENT_SYSTEM_MOVESIZESTART`, `EVENT_SYSTEM_MOVESIZEEND`) for location tracking, focus change handler triggers, and state cleanup.
+  - `DwmGetColorizationColor` (Accent color query).
+  - `SetConsoleCtrlHandler` + `PostThreadMessageW` (Graceful daemon shutdown routing).
+  - `GetAncestor` / `GetWindow` (Window owner and ancestor tree climbing).
+  - `OpenProcess` / `QueryFullProcessImageNameW` (Process executable name query for system window exclusion).
+  - `IsZoomed` (Check if the target window is maximized).
+  - `SetTimer` / `KillTimer` (Win32 window message timers for snapping animations debouncing).
 
 ---
 
@@ -72,7 +79,8 @@ win-float/
 │   └── main.rs             # Daemon entry point and lifecycle watchdog
 ├── TODO.md                 # Roadmap checklist
 ├── SPEC.md                 # Technical design specification
-└── IDEA.md                 # Original application concept
+├── IDEA.md                 # Original application concept
+└── LICENSE                 # MIT License File
 ```
 
 ---
@@ -95,7 +103,7 @@ cargo run --release
 ```
 
 ### Running Tests
-To run the full decoupled test suite (44 unit & integration tests):
+To run the full decoupled test suite (47 unit & integration tests):
 ```powershell
 cargo test
 ```
