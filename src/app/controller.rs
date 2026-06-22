@@ -1,7 +1,8 @@
 #![allow(clippy::collapsible_if, clippy::identity_op, clippy::unnecessary_cast)]
 
 use crate::app::tracker::{
-    WM_TACTILE_FOCUS_CHANGED, WM_TACTILE_WINDOW_CLOSED, WM_TACTILE_WINDOW_MOVED,
+    WM_TACTILE_FOCUS_CHANGED, WM_TACTILE_MOVESIZE_END, WM_TACTILE_MOVESIZE_START,
+    WM_TACTILE_WINDOW_CLOSED, WM_TACTILE_WINDOW_MOVED,
 };
 use crate::platform::hook::WM_TACTILE_KEY_EVENT;
 use crate::state_machine::{AdjustmentAction, Mode, StateMachine, Transition};
@@ -167,6 +168,7 @@ where
     pub last_physics_update: Option<Instant>,
     pub overlay_rects: HashMap<isize, crate::hud_layout::Rect>, // target HWND -> last known target rect
     pub overlay_focus_states: HashMap<isize, bool>,             // target HWND -> is_focused
+    pub movesize_targets: HashSet<isize>, // target HWNDs currently resizing/moving
 }
 
 impl<W, I, O, T> AppController<W, I, O, T>
@@ -215,6 +217,7 @@ where
             last_physics_update: None,
             overlay_rects: HashMap::new(),
             overlay_focus_states: HashMap::new(),
+            movesize_targets: HashSet::new(),
         })
     }
 
@@ -267,6 +270,12 @@ where
                     let target_hwnd = HWND(msg.wParam.0 as isize);
                     let new_fg_hwnd = HWND(msg.lParam.0 as isize);
                     let _ = self.handle_focus_changed(target_hwnd, new_fg_hwnd);
+                } else if msg.message == WM_TACTILE_MOVESIZE_START {
+                    let target_hwnd = HWND(msg.wParam.0 as isize);
+                    let _ = self.handle_movesize_start(target_hwnd);
+                } else if msg.message == WM_TACTILE_MOVESIZE_END {
+                    let target_hwnd = HWND(msg.wParam.0 as isize);
+                    let _ = self.handle_movesize_end(target_hwnd);
                 }
 
                 use windows::Win32::UI::WindowsAndMessaging::{DispatchMessageW, TranslateMessage};
@@ -301,11 +310,11 @@ where
                     let rect = get_window_rect_helper(active)
                         .unwrap_or(crate::hud_layout::Rect::new(0, 0, 800, 600));
                     let width = rect.width();
-                    let height = rect.height() + 8;
+                    let height = rect.height() + 7;
                     let overlay = self.overlay_manager.create_overlay(
                         active,
                         rect.left,
-                        rect.top - 8,
+                        rect.top - 7,
                         width,
                         height,
                     )?;
@@ -314,6 +323,9 @@ where
                     self.event_tracker.start_tracking(active, overlay)?;
                     self.pinned_overlays.insert(active.0, overlay);
                     self.overlay_rects.insert(active.0, rect);
+                    if self.window_manager.is_maximized(active)? {
+                        self.overlay_manager.set_visibility(overlay, false);
+                    }
                     if let Some(ref mut stdin) = self.watchdog_stdin {
                         use std::io::Write;
                         let _ = writeln!(stdin, "PIN 0x{:X}", active.0);
@@ -652,6 +664,10 @@ where
     }
 
     pub fn handle_window_moved(&mut self, target_hwnd: HWND) -> Result<(), String> {
+        if self.movesize_targets.contains(&target_hwnd.0) {
+            return Ok(());
+        }
+
         let overlay_hwnd = if self.modal_target == Some(target_hwnd) {
             self.hud_overlay
         } else {
@@ -659,6 +675,14 @@ where
         };
 
         if let Some(overlay) = overlay_hwnd {
+            let is_maximized = self.window_manager.is_maximized(target_hwnd)?;
+            if is_maximized {
+                self.overlay_manager.set_visibility(overlay, false);
+                return Ok(());
+            }
+
+            self.overlay_manager.set_visibility(overlay, true);
+
             let rect = get_window_rect_helper(target_hwnd)
                 .unwrap_or(crate::hud_layout::Rect::new(0, 0, 800, 600));
 
@@ -689,23 +713,12 @@ where
                 let (hx, hy) = crate::hud_layout::calculate_hud_position(rect, hud_w, hud_h);
                 (hx, hy, hud_w, hud_h)
             } else {
-                (rect.left, rect.top - 8, rect.width(), rect.height() + 8)
+                (rect.left, rect.top - 7, rect.width(), rect.height() + 7)
             };
 
-            unsafe {
-                use windows::Win32::UI::WindowsAndMessaging::{
-                    SWP_NOACTIVATE, SWP_NOZORDER, SetWindowPos,
-                };
-                let _ = SetWindowPos(
-                    overlay,
-                    HWND(0),
-                    ox,
-                    oy,
-                    ow,
-                    oh,
-                    SWP_NOZORDER | SWP_NOACTIVATE,
-                );
-            }
+            let _ = self
+                .overlay_manager
+                .reposition_overlay(overlay, ox, oy, ow, oh);
 
             if !is_modal && size_changed {
                 self.update_pinned_overlay_graphics(target_hwnd, overlay, rect, None)?;
@@ -715,6 +728,52 @@ where
                 "[Win-Float] [Info] Tracked window HWND 0x{:X} moved. Repositioning overlay HWND 0x{:X} to coordinates (x: {}, y: {}). Size changed: {}.",
                 target_hwnd.0, overlay.0, ox, oy, size_changed
             );
+        }
+        Ok(())
+    }
+
+    pub fn handle_movesize_start(&mut self, target_hwnd: HWND) -> Result<(), String> {
+        self.movesize_targets.insert(target_hwnd.0);
+        if let Some(&overlay) = self.pinned_overlays.get(&target_hwnd.0) {
+            self.overlay_manager.set_visibility(overlay, false);
+        }
+        Ok(())
+    }
+
+    pub fn handle_movesize_end(&mut self, target_hwnd: HWND) -> Result<(), String> {
+        self.movesize_targets.remove(&target_hwnd.0);
+        if let Some(&overlay) = self.pinned_overlays.get(&target_hwnd.0) {
+            let is_maximized = self.window_manager.is_maximized(target_hwnd)?;
+            if is_maximized {
+                self.overlay_manager.set_visibility(overlay, false);
+                return Ok(());
+            }
+
+            let rect = get_window_rect_helper(target_hwnd)
+                .unwrap_or(crate::hud_layout::Rect::new(0, 0, 800, 600));
+
+            // Update cached rect
+            self.overlay_rects.insert(target_hwnd.0, rect);
+
+            let is_modal = self.modal_target == Some(target_hwnd);
+            let (ox, oy, ow, oh) = if is_modal {
+                let hud_w = 200;
+                let hud_h = 80;
+                let (hx, hy) = crate::hud_layout::calculate_hud_position(rect, hud_w, hud_h);
+                (hx, hy, hud_w, hud_h)
+            } else {
+                (rect.left, rect.top - 7, rect.width(), rect.height() + 7)
+            };
+
+            let _ = self
+                .overlay_manager
+                .reposition_overlay(overlay, ox, oy, ow, oh);
+
+            if !is_modal {
+                self.update_pinned_overlay_graphics(target_hwnd, overlay, rect, None)?;
+            }
+
+            self.overlay_manager.set_visibility(overlay, true);
         }
         Ok(())
     }
@@ -790,7 +849,7 @@ where
         new_fg_hwnd: Option<HWND>,
     ) -> Result<(), String> {
         let width = rect.width();
-        let height = rect.height() + 8;
+        let height = rect.height() + 7;
         if width <= 0 || height <= 0 {
             return Ok(());
         }
@@ -936,6 +995,9 @@ where
 mod tests {
     use super::*;
     use crate::traits::{MockEventTracker, MockOverlayManager, MockWindowManager};
+    use std::sync::Mutex;
+
+    static TEST_SERIALIZATION_MUTEX: Mutex<()> = Mutex::new(());
 
     struct MockInputHook;
     impl InputHook for MockInputHook {
@@ -959,6 +1021,7 @@ mod tests {
 
     #[test]
     fn test_controller_topmost_toggle() {
+        let _test_guard = TEST_SERIALIZATION_MUTEX.lock().unwrap();
         let wm = MockWindowManager::default();
         let hook = MockInputHook;
         let om = MockOverlayManager::default();
@@ -980,8 +1043,8 @@ mod tests {
             let overlays = controller.overlay_manager.overlays.lock().unwrap();
             assert_eq!(overlays.len(), 1);
             let (_, _ox, oy, _ow, oh) = overlays[0];
-            assert_eq!(oy, -8, "overlay y should start at top - 8");
-            assert_eq!(oh, 608, "overlay height should be rect.height() + 8");
+            assert_eq!(oy, -7, "overlay y should start at top - 7");
+            assert_eq!(oh, 607, "overlay height should be rect.height() + 7");
         }
 
         controller.handle_hotkey(HOTKEY_TOPMOST_ID).unwrap();
@@ -1154,6 +1217,7 @@ mod tests {
 
     #[test]
     fn test_always_on_top_overlay_focus_outline_thickness_and_opacity() {
+        let _test_guard = TEST_SERIALIZATION_MUTEX.lock().unwrap();
         let wm = MockWindowManager::default();
         let target = HWND(12345);
         *wm.active_window.lock().unwrap() = target;
@@ -1196,6 +1260,7 @@ mod tests {
 
     #[test]
     fn test_window_moved_does_not_redraw_if_size_unchanged() {
+        let _test_guard = TEST_SERIALIZATION_MUTEX.lock().unwrap();
         let wm = MockWindowManager::default();
         let target = HWND(12345);
         *wm.active_window.lock().unwrap() = target;
@@ -1218,9 +1283,9 @@ mod tests {
             assert_eq!(overlays.len(), 1);
             let (_, ox, oy, ow, oh) = overlays[0];
             assert_eq!(ox, 100);
-            assert_eq!(oy, 92);
+            assert_eq!(oy, 93);
             assert_eq!(ow, 200);
-            assert_eq!(oh, 108);
+            assert_eq!(oh, 107);
         }
 
         // Clear last_pixels tracking record
@@ -1242,6 +1307,17 @@ mod tests {
             "Overlay should not redraw when size is unchanged!"
         );
 
+        // Verify overlay coordinates were updated with the -7 offset
+        {
+            let overlays = controller.overlay_manager.overlays.lock().unwrap();
+            assert_eq!(overlays.len(), 1);
+            let (_, ox, oy, ow, oh) = overlays[0];
+            assert_eq!(ox, 150);
+            assert_eq!(oy, 173);
+            assert_eq!(ow, 200);
+            assert_eq!(oh, 107);
+        }
+
         // 2. Change size
         {
             *TEST_RECT.lock().unwrap() = Some(crate::hud_layout::Rect::new(150, 180, 450, 280));
@@ -1257,6 +1333,139 @@ mod tests {
                 .is_some(),
             "Overlay should redraw when size changes!"
         );
+
+        // Cleanup
+        *TEST_RECT.lock().unwrap() = None;
+    }
+
+    #[test]
+    fn test_always_on_top_overlay_hidden_during_movesize() {
+        let _test_guard = TEST_SERIALIZATION_MUTEX.lock().unwrap();
+        let wm = MockWindowManager::default();
+        let target = HWND(12345);
+        *wm.active_window.lock().unwrap() = target;
+
+        let hook = MockInputHook;
+        let om = MockOverlayManager::default();
+        let tracker = MockEventTracker::default();
+        let mut controller = AppController::new(wm, hook, om, tracker).unwrap();
+
+        // Preset initial mock rect
+        *TEST_RECT.lock().unwrap() = Some(crate::hud_layout::Rect::new(100, 100, 300, 200));
+
+        // Pin the window (gets focused initially)
+        controller.handle_hotkey(HOTKEY_TOPMOST_ID).unwrap();
+        let overlay = controller.pinned_overlays.get(&target.0).copied().unwrap();
+
+        // Overlay should be visible initially
+        {
+            let visibility = controller.overlay_manager.visibility.lock().unwrap();
+            assert_eq!(visibility.get(&overlay.0), None); // None means default visible/created
+        }
+
+        // 1. Movesize start
+        controller.handle_movesize_start(target).unwrap();
+        assert!(controller.movesize_targets.contains(&target.0));
+        {
+            let visibility = controller.overlay_manager.visibility.lock().unwrap();
+            assert_eq!(visibility.get(&overlay.0), Some(&false)); // Hidden!
+        }
+
+        // 2. Trigger window moved event (size change) while movesize loop is active
+        *controller.overlay_manager.last_pixels.lock().unwrap() = None;
+        *TEST_RECT.lock().unwrap() = Some(crate::hud_layout::Rect::new(100, 100, 400, 300));
+        controller.handle_window_moved(target).unwrap();
+
+        // Should NOT redraw or update position during movesize
+        assert!(
+            controller
+                .overlay_manager
+                .last_pixels
+                .lock()
+                .unwrap()
+                .is_none(),
+            "Should not redraw overlay during movesize loop!"
+        );
+
+        // 3. Movesize end
+        controller.handle_movesize_end(target).unwrap();
+        assert!(!controller.movesize_targets.contains(&target.0));
+        {
+            let visibility = controller.overlay_manager.visibility.lock().unwrap();
+            assert_eq!(visibility.get(&overlay.0), Some(&true)); // Visible again!
+        }
+
+        // Should have updated to final position and size, and redrawn
+        assert!(
+            controller
+                .overlay_manager
+                .last_pixels
+                .lock()
+                .unwrap()
+                .is_some(),
+            "Should redraw overlay on movesize end!"
+        );
+
+        // Cleanup
+        *TEST_RECT.lock().unwrap() = None;
+    }
+
+    #[test]
+    fn test_always_on_top_overlay_hidden_when_maximized() {
+        let _test_guard = TEST_SERIALIZATION_MUTEX.lock().unwrap();
+        let wm = MockWindowManager::default();
+        let target = HWND(12345);
+        *wm.active_window.lock().unwrap() = target;
+
+        let hook = MockInputHook;
+        let om = MockOverlayManager::default();
+        let tracker = MockEventTracker::default();
+        let mut controller = AppController::new(wm, hook, om, tracker).unwrap();
+
+        // Preset initial mock rect
+        *TEST_RECT.lock().unwrap() = Some(crate::hud_layout::Rect::new(100, 100, 300, 200));
+
+        // Pin the window (gets focused initially)
+        controller.handle_hotkey(HOTKEY_TOPMOST_ID).unwrap();
+        let overlay = controller.pinned_overlays.get(&target.0).copied().unwrap();
+
+        // 1. Initially unmaximized -> overlay should be visible
+        {
+            let visibility = controller.overlay_manager.visibility.lock().unwrap();
+            assert_eq!(visibility.get(&overlay.0), None);
+        }
+
+        // 2. Maximize the target window
+        controller
+            .window_manager
+            .maximized_windows
+            .lock()
+            .unwrap()
+            .insert(target.0);
+
+        // Trigger window moved event (maximized window changes location/size)
+        controller.handle_window_moved(target).unwrap();
+
+        // Overlay should be hidden!
+        {
+            let visibility = controller.overlay_manager.visibility.lock().unwrap();
+            assert_eq!(visibility.get(&overlay.0), Some(&false));
+        }
+
+        // 3. Restore/unmaximize the window
+        controller
+            .window_manager
+            .maximized_windows
+            .lock()
+            .unwrap()
+            .remove(&target.0);
+        controller.handle_window_moved(target).unwrap();
+
+        // Overlay should be visible again!
+        {
+            let visibility = controller.overlay_manager.visibility.lock().unwrap();
+            assert_eq!(visibility.get(&overlay.0), Some(&true));
+        }
 
         // Cleanup
         *TEST_RECT.lock().unwrap() = None;
@@ -1587,6 +1796,9 @@ mod tests {
                 Ok(())
             }
             fn is_taskbar_or_start_menu(&self, _hwnd: HWND) -> Result<bool, String> {
+                Ok(false)
+            }
+            fn is_maximized(&self, _hwnd: HWND) -> Result<bool, String> {
                 Ok(false)
             }
         }

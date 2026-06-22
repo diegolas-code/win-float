@@ -1,5 +1,6 @@
 #![allow(clippy::type_complexity, clippy::collapsible_if)]
 
+use std::collections::HashMap;
 use std::sync::Mutex;
 use windows::Win32::Foundation::HWND;
 
@@ -19,6 +20,7 @@ pub trait WindowManager {
         style: i32,
     ) -> Result<(), String>;
     fn is_taskbar_or_start_menu(&self, hwnd: HWND) -> Result<bool, String>;
+    fn is_maximized(&self, hwnd: HWND) -> Result<bool, String>;
 }
 
 pub trait InputHook {
@@ -43,6 +45,15 @@ pub trait OverlayManager {
         height: u32,
     ) -> Result<(), String>;
     fn destroy_overlay(&self, hwnd: HWND);
+    fn set_visibility(&self, hwnd: HWND, visible: bool);
+    fn reposition_overlay(
+        &self,
+        hwnd: HWND,
+        x: i32,
+        y: i32,
+        width: i32,
+        height: i32,
+    ) -> Result<(), String>;
 }
 
 pub trait EventTracker {
@@ -59,6 +70,7 @@ pub struct MockWindowManager {
     /// Tuple: (was_layered, alpha, cr_key, flags, style)
     pub preset_style_info: Mutex<(bool, u8, u32, u32, i32)>,
     pub taskbar_or_start_menu: Mutex<std::collections::HashSet<isize>>,
+    pub maximized_windows: Mutex<std::collections::HashSet<isize>>,
 }
 
 impl Default for MockWindowManager {
@@ -69,6 +81,7 @@ impl Default for MockWindowManager {
             transparency: Mutex::new(None),
             preset_style_info: Mutex::new((false, 255, 0, 0, 0)),
             taskbar_or_start_menu: Mutex::new(std::collections::HashSet::new()),
+            maximized_windows: Mutex::new(std::collections::HashSet::new()),
         }
     }
 }
@@ -117,6 +130,10 @@ impl WindowManager for MockWindowManager {
     fn is_taskbar_or_start_menu(&self, hwnd: HWND) -> Result<bool, String> {
         Ok(self.taskbar_or_start_menu.lock().unwrap().contains(&hwnd.0))
     }
+
+    fn is_maximized(&self, hwnd: HWND) -> Result<bool, String> {
+        Ok(self.maximized_windows.lock().unwrap().contains(&hwnd.0))
+    }
 }
 
 pub struct MockOverlayManager {
@@ -124,6 +141,7 @@ pub struct MockOverlayManager {
     pub last_updated: Mutex<Option<(HWND, usize)>>, // (HWND, size of pixels)
     pub last_pixel_sum: Mutex<Option<(HWND, usize)>>,
     pub last_pixels: Mutex<Option<Vec<u8>>>,
+    pub visibility: Mutex<HashMap<isize, bool>>,
 }
 
 impl Default for MockOverlayManager {
@@ -133,6 +151,7 @@ impl Default for MockOverlayManager {
             last_updated: Mutex::new(None),
             last_pixel_sum: Mutex::new(None),
             last_pixels: Mutex::new(None),
+            visibility: Mutex::new(HashMap::new()),
         }
     }
 }
@@ -173,6 +192,25 @@ impl OverlayManager for MockOverlayManager {
             .lock()
             .unwrap()
             .retain(|&(h, _, _, _, _)| h != hwnd);
+    }
+
+    fn set_visibility(&self, hwnd: HWND, visible: bool) {
+        self.visibility.lock().unwrap().insert(hwnd.0, visible);
+    }
+
+    fn reposition_overlay(
+        &self,
+        hwnd: HWND,
+        x: i32,
+        y: i32,
+        width: i32,
+        height: i32,
+    ) -> Result<(), String> {
+        let mut guard = self.overlays.lock().unwrap();
+        if let Some(pos) = guard.iter().position(|&(h, _, _, _, _)| h == hwnd) {
+            guard[pos] = (hwnd, x, y, width, height);
+        }
+        Ok(())
     }
 }
 

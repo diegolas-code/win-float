@@ -10,9 +10,10 @@ use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::UI::WindowsAndMessaging::{
     CS_HREDRAW, CS_VREDRAW, CreateWindowExW, DefWindowProcW, DestroyWindow, GWL_EXSTYLE,
     GetForegroundWindow, GetLayeredWindowAttributes, GetWindowLongW, HMENU, HWND_NOTOPMOST,
-    HWND_TOPMOST, IsWindow, LWA_ALPHA, RegisterClassExW, SWP_FRAMECHANGED, SWP_NOACTIVATE,
-    SWP_NOMOVE, SWP_NOSIZE, SWP_NOZORDER, SetLayeredWindowAttributes, SetWindowLongW, SetWindowPos,
-    ULW_ALPHA, UpdateLayeredWindow, WM_MOUSEACTIVATE, WNDCLASSEXW, WS_EX_LAYERED, WS_EX_NOACTIVATE,
+    HWND_TOPMOST, IsWindow, IsZoomed, LWA_ALPHA, RegisterClassExW, SW_HIDE, SW_SHOWNOACTIVATE,
+    SWP_FRAMECHANGED, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SWP_NOZORDER,
+    SetLayeredWindowAttributes, SetWindowLongW, SetWindowPos, ShowWindow, ULW_ALPHA,
+    UpdateLayeredWindow, WM_MOUSEACTIVATE, WNDCLASSEXW, WS_EX_LAYERED, WS_EX_NOACTIVATE,
     WS_EX_TOPMOST, WS_EX_TRANSPARENT, WS_POPUP,
 };
 use windows::core::w;
@@ -301,6 +302,13 @@ impl WindowManager for LiveWindowManager {
 
         Ok(false)
     }
+
+    fn is_maximized(&self, hwnd: HWND) -> Result<bool, String> {
+        if hwnd.0 == 0 {
+            return Ok(false);
+        }
+        Ok(unsafe { IsZoomed(hwnd).as_bool() })
+    }
 }
 
 fn get_root_window(mut hwnd: HWND) -> HWND {
@@ -496,6 +504,46 @@ impl OverlayManager for LiveOverlayManager {
                 let _ = DestroyWindow(hwnd);
             }
         }
+    }
+
+    fn set_visibility(&self, hwnd: HWND, visible: bool) {
+        if hwnd.0 != 0 {
+            let cmd = if visible { SW_SHOWNOACTIVATE } else { SW_HIDE };
+            unsafe {
+                let _ = ShowWindow(hwnd, cmd);
+            }
+        }
+    }
+
+    fn reposition_overlay(
+        &self,
+        hwnd: HWND,
+        x: i32,
+        y: i32,
+        width: i32,
+        height: i32,
+    ) -> Result<(), String> {
+        if hwnd.0 == 0 {
+            return Err("Invalid window handle".to_string());
+        }
+        unsafe {
+            use windows::Win32::UI::WindowsAndMessaging::{
+                SWP_NOACTIVATE, SWP_NOZORDER, SetWindowPos,
+            };
+            let res = SetWindowPos(
+                hwnd,
+                HWND(0),
+                x,
+                y,
+                width,
+                height,
+                SWP_NOZORDER | SWP_NOACTIVATE,
+            );
+            if res.is_err() {
+                return Err(format!("SetWindowPos failed: {:?}", res));
+            }
+        }
+        Ok(())
     }
 }
 

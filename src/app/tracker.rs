@@ -3,19 +3,23 @@ use std::sync::Mutex;
 use windows::Win32::Foundation::{HWND, LPARAM, WPARAM};
 use windows::Win32::UI::Accessibility::{HWINEVENTHOOK, SetWinEventHook, UnhookWinEvent};
 use windows::Win32::UI::WindowsAndMessaging::{
-    EVENT_OBJECT_DESTROY, EVENT_OBJECT_LOCATIONCHANGE, EVENT_SYSTEM_FOREGROUND, OBJID_WINDOW,
-    PostMessageW, WINEVENT_OUTOFCONTEXT,
+    EVENT_OBJECT_DESTROY, EVENT_OBJECT_LOCATIONCHANGE, EVENT_SYSTEM_FOREGROUND,
+    EVENT_SYSTEM_MOVESIZEEND, EVENT_SYSTEM_MOVESIZESTART, OBJID_WINDOW, PostMessageW,
+    WINEVENT_OUTOFCONTEXT,
 };
 
 pub const WM_TACTILE_WINDOW_MOVED: u32 = 0x8001;
 pub const WM_TACTILE_WINDOW_CLOSED: u32 = 0x8002;
 pub const WM_TACTILE_FOCUS_CHANGED: u32 = 0x8003;
+pub const WM_TACTILE_MOVESIZE_START: u32 = 0x8004;
+pub const WM_TACTILE_MOVESIZE_END: u32 = 0x8005;
 
 static TRACKED_WINDOWS: Mutex<Option<HashMap<isize, HWND>>> = Mutex::new(None);
 
 pub struct WindowEventTracker {
     hook: Mutex<Option<HWINEVENTHOOK>>,
     fg_hook: Mutex<Option<HWINEVENTHOOK>>,
+    movesize_hook: Mutex<Option<HWINEVENTHOOK>>,
 }
 
 impl Default for WindowEventTracker {
@@ -29,6 +33,7 @@ impl WindowEventTracker {
         Self {
             hook: Mutex::new(None),
             fg_hook: Mutex::new(None),
+            movesize_hook: Mutex::new(None),
         }
     }
 }
@@ -95,6 +100,36 @@ impl crate::traits::EventTracker for WindowEventTracker {
             *fg_hook_guard = Some(fg_hook_handle);
         }
 
+        // Setup movesize_hook if not active
+        let mut movesize_hook_guard = self.movesize_hook.lock().unwrap();
+        if movesize_hook_guard.is_none() {
+            let movesize_hook_handle = unsafe {
+                SetWinEventHook(
+                    EVENT_SYSTEM_MOVESIZESTART,
+                    EVENT_SYSTEM_MOVESIZEEND,
+                    None,
+                    Some(win_event_proc),
+                    0,
+                    0,
+                    WINEVENT_OUTOFCONTEXT,
+                )
+            };
+            if movesize_hook_handle.0 == 0 {
+                if let Some(h) = hook_guard.take() {
+                    unsafe {
+                        let _ = UnhookWinEvent(h);
+                    }
+                }
+                if let Some(h) = fg_hook_guard.take() {
+                    unsafe {
+                        let _ = UnhookWinEvent(h);
+                    }
+                }
+                return Err("SetWinEventHook for movesize failed".to_string());
+            }
+            *movesize_hook_guard = Some(movesize_hook_handle);
+        }
+
         Ok(())
     }
 
@@ -114,6 +149,12 @@ impl crate::traits::EventTracker for WindowEventTracker {
                 if let Some(fg_hook_handle) = fg_hook_guard.take() {
                     unsafe {
                         let _ = UnhookWinEvent(fg_hook_handle);
+                    }
+                }
+                let mut movesize_hook_guard = self.movesize_hook.lock().unwrap();
+                if let Some(movesize_hook_handle) = movesize_hook_guard.take() {
+                    unsafe {
+                        let _ = UnhookWinEvent(movesize_hook_handle);
                     }
                 }
             }
@@ -142,6 +183,12 @@ impl Drop for WindowEventTracker {
         if let Some(fg_hook_handle) = fg_hook_guard.take() {
             unsafe {
                 let _ = UnhookWinEvent(fg_hook_handle);
+            }
+        }
+        let mut movesize_hook_guard = self.movesize_hook.lock().unwrap();
+        if let Some(movesize_hook_handle) = movesize_hook_guard.take() {
+            unsafe {
+                let _ = UnhookWinEvent(movesize_hook_handle);
             }
         }
         let mut map_guard = TRACKED_WINDOWS.lock().unwrap();
@@ -217,6 +264,26 @@ unsafe extern "system" fn win_event_proc(
                     PostMessageW(
                         overlay,
                         WM_TACTILE_WINDOW_CLOSED,
+                        WPARAM(hwnd.0 as usize),
+                        LPARAM(0),
+                    )
+                };
+            }
+            EVENT_SYSTEM_MOVESIZESTART => {
+                let _ = unsafe {
+                    PostMessageW(
+                        overlay,
+                        WM_TACTILE_MOVESIZE_START,
+                        WPARAM(hwnd.0 as usize),
+                        LPARAM(0),
+                    )
+                };
+            }
+            EVENT_SYSTEM_MOVESIZEEND => {
+                let _ = unsafe {
+                    PostMessageW(
+                        overlay,
+                        WM_TACTILE_MOVESIZE_END,
                         WPARAM(hwnd.0 as usize),
                         LPARAM(0),
                     )

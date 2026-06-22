@@ -94,4 +94,11 @@ Follow the TDD cycle strictly: write failing test -> verify -> write minimal imp
   - Implement `is_taskbar_or_start_menu` method in `WindowManager` trait and mock it in tests.
   - Implement process name and class name checks in `LiveWindowManager`.
   - Verify with mock unit tests and live Win32 unit tests.
+- [x] **Task 24: Accent overlay resizing inconsistencies and 7px top offset**
+  - Hide overlay during mouse movesize drag & resize loop (`EVENT_SYSTEM_MOVESIZESTART` and `EVENT_SYSTEM_MOVESIZEEND`).
+  - Hide overlay completely when the target window is maximized (`is_maximized` via `IsZoomed` API).
+  - Position overlay 7px taller from the top side (`y = rect.top - 7` and `height = rect.height() + 7`) to float symmetrically over Windows 10/11 invisible borders.
+  - Decouple direct Win32 `SetWindowPos` calls using `reposition_overlay` method in `OverlayManager` trait.
+  - Verify with unit tests (`test_always_on_top_overlay_hidden_when_maximized`, `test_window_moved_does_not_redraw_if_size_unchanged`, etc.).
+
 
