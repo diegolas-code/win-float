@@ -53,29 +53,25 @@ Following Test-Driven Development (TDD) principles, all platform-dependent layer
 
 ```
 win-float/
-├── src/
-│   ├── traits.rs           # Decoupling traits (WindowManager, InputHook, etc.) and Mocks
-│   ├── transparency_calc.rs # Pure mathematical functions for opacity-to-alpha mapping
-│   ├── hud_layout.rs       # Coordinate/boundary layout math for pins & HUD boxes
-│   ├── state_machine.rs    # Core transition state machine (Idle <-> Modal)
-│   ├── app/
-│   │   ├── mod.rs
-│   │   ├── controller.rs   # Application event controller & physics loop
-│   │   └── tracker.rs      # WinEvent hook tracker implementation
-│   ├── platform/
-│   │   ├── mod.rs
-│   │   ├── hook.rs         # Live keyboard capture hook wrapper
-│   │   └── window.rs       # Live window/overlay management implementation
-│   ├── ui/
-│   │   ├── mod.rs
-│   │   ├── draw.rs         # 2D HUD widget and pin renderer
-│   │   └── overlay.rs      # Overlay canvas pixels buffer wrapper
-│   └── main.rs             # Daemon entry point and lifecycle watchdog
-├── .history/               # Development logs
-├── TODO.md                 # Roadmap checklist
-├── SPEC.md                 # Technical design specification
-├── IDEA.md                 # Original application concept
-└── LICENSE                 # MIT License File
+├── Cargo.toml
+└── src/
+    ├── traits.rs           # Decoupling traits (WindowManager, InputHook, etc.) and Mocks
+    ├── transparency_calc.rs # Pure mathematical functions for opacity-to-alpha mapping
+    ├── hud_layout.rs       # Coordinate/boundary layout math for pins & HUD boxes
+    ├── state_machine.rs    # Core transition state machine (Idle <-> Modal)
+    ├── app/
+    │   ├── mod.rs
+    │   ├── controller.rs   # Application event controller & physics loop
+    │   └── tracker.rs      # WinEvent hook tracker implementation
+    ├── platform/
+    │   ├── mod.rs
+    │   ├── hook.rs         # Live keyboard capture hook wrapper
+    │   └── window.rs       # Live window/overlay management implementation
+    ├── ui/
+    │   ├── mod.rs
+    │   ├── draw.rs         # 2D HUD widget and pin renderer
+    │   └── overlay.rs      # Overlay canvas pixels buffer wrapper
+    └── main.rs             # Daemon entry point and lifecycle watchdog
 ```
 
 ---
