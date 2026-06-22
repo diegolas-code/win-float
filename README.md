@@ -2,6 +2,8 @@
 
 `win-float` is a lightweight, high-performance workspace utility for Windows written in Rust. It allows you to toggle "Always-On-Top" states and adjust transparency for any window using global hotkeys. The app draws click-through overlays using 2D vector graphics (`tiny-skia`) for real-time visual HUD feedback.
 
+This is mostly a learning project to explore Windows APIs and Rust desktop utility development.
+
 ---
 
 ## Features
@@ -105,3 +107,9 @@ cargo test
 * **Safety Hook Proc:** The low-level keyboard hook proc resolves keyboard captures using `CallNextHookEx` to ensure key event chains are never dropped system-wide.
 * **Crash-Resilient Watchdog:** To ensure user windows are not left permanently transparent or locked if the app crashes, the binary launches a background watchdog process. In the event of a main process crash, the watchdog intercepts the state, recovers the target windows, and restores their original styling.
 * **Graceful Exit:** Responds to Ctrl+C or Console Exit events by safely routing thread notifications, tearing down hook handlers, and cleaning up window style modifications immediately.
+
+---
+
+## License
+
+This project is licensed under the [MIT License](./LICENSE).

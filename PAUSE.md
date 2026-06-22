@@ -11,9 +11,10 @@ This document tracks the project state at the end of each development session. I
 - **Hierarchical Detection:** Used parent/owner hierarchy climbing to catch sub-components and nested UWP wrapper panels (like `NativeHWNDHost` or `Windows.UI.Core.CoreWindow`) hosted by `explorer.exe` or `ShellExperienceHost.exe`.
 - **Descriptive Warning Logging:** Added explicit console warnings outputting the Class, Process, HWND, and Root HWND of the rejected system window.
 - **TDD & Unit Testing:** All 44 tests pass successfully, including live checks asserting that both the taskbar and its child elements are correctly identified and rejected.
+- **Documentation Update:** Added notes to `README.md` clarifying that the utility is a learning project, and linked the MIT `LICENSE` at the bottom of the file.
 
 ## 3. Current Task State
-- **Active Task:** Exclude Taskbar, Start Menu, and System Tray areas from window targeting complete.
+- **Active Task:** Documentation additions and code explanation complete.
 - **Status:** Uncommitted changes ready to be committed on branch `feature/exclude-taskbar-startmenu`.
 
 ## 4. Pending / Next Steps
