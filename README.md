@@ -21,6 +21,11 @@
 * **Physics-Based Slider HUD:** Displays a floating HUD overlay near the window showing the current opacity percentage with a smooth, physics-animated slider bar.
 * **Seeding from Current State:** Re-entering the modal automatically queries the window's existing opacity and seeds the slider, avoiding visual jumps.
 
+### 3. Shell & System Window Exclusion
+* **Safety Block:** Automatically rejects operations on system components like the Taskbar, system tray notification area, tray clock, overflow tray popup (`^`), Quick Settings panel, Action Center flyouts, volume indicators, desktop backgrounds, and third-party Start menus.
+* **Hierarchical Scanning:** Climbs window owner and ancestor chains to ensure sub-components (such as nested panels or tray buttons) are correctly identified as part of blocked system windows.
+* **Operational Logging:** Prints clear console warnings detailing the Class, Process name, and HWND of the rejected system window.
+
 ---
 
 ## Tech Stack & Windows APIs
@@ -34,6 +39,8 @@
   * `SetWinEventHook` (`EVENT_OBJECT_LOCATIONCHANGE`, `EVENT_OBJECT_DESTROY`) for location tracking and cleanup.
   * `DwmGetColorizationColor` (Accent color query).
   * `SetConsoleCtrlHandler` + `PostThreadMessageW` (Graceful daemon shutdown routing).
+  * `GetAncestor` / `GetWindow` (Window owner and ancestor tree climbing).
+  * `OpenProcess` / `QueryFullProcessImageNameW` (Process executable name query for system window exclusion).
 
 ---
 
@@ -86,7 +93,7 @@ cargo run --release
 ```
 
 ### Running Tests
-To run the full decoupled test suite (32 unit & integration tests):
+To run the full decoupled test suite (44 unit & integration tests):
 ```powershell
 cargo test
 ```
