@@ -4,25 +4,22 @@ This document tracks the project state at the end of each development session. I
 
 ## 1. Last Updated
 - **Date:** 2026-06-22
-- **Task Reference:** Exclude Taskbar and Start Menu from window targeting
+- **Task Reference:** Window Snap Debouncing and Overlay Hiding
 
 ## 2. Session Achievements
-- **Exclusion of Taskbar, Start Menu, Tray & Flyouts:** Expanded the `is_taskbar_or_start_menu` method in `LiveWindowManager` to reject any active window or root window belonging to the taskbar, tray clock, tray overflow, quick settings, calendar popups, media controls, third-party start menus, and desktop background.
-- **Hierarchical Detection:** Used parent/owner hierarchy climbing to catch sub-components and nested UWP wrapper panels (like `NativeHWNDHost` or `Windows.UI.Core.CoreWindow`) hosted by `explorer.exe` or `ShellExperienceHost.exe`.
-- **Descriptive Warning Logging:** Added explicit console warnings outputting the Class, Process, HWND, and Root HWND of the rejected system window.
-- **TDD & Unit Testing:** All 46 tests pass successfully, including live checks asserting that both the taskbar and its child elements are correctly identified and rejected.
-- **Documentation Update:** Added notes to `README.md` clarifying that the utility is a learning project, and linked the MIT `LICENSE` at the bottom of the file.
-- **Accent Overlay Alignment & 7px Top Offset:** Adjusted the top layout offset in `src/app/controller.rs` to start 7px higher (`y = rect.top - 7` and `height = rect.height() + 7`) to float symmetrically around the window, matching the 7-8px invisible borders of modern Windows 10/11 windows.
-- **Movesize Overlay Hiding:** Registered win event hooks for `EVENT_SYSTEM_MOVESIZESTART` and `EVENT_SYSTEM_MOVESIZEEND` in `src/app/tracker.rs`. When resizing or dragging starts, the overlay is hidden. When dragging/resizing ends, the overlay is repositioned to the final rect, redrawn at the final size, and made visible again.
-- **Maximized Window Overlay Hiding:** Implemented an `is_maximized` query via the Win32 `IsZoomed` API. If the window becomes maximized, the accent outline overlay is completely hidden, and it automatically reappears when restored.
+- **Overlay Decoupling & Mocking**: Refactored `AppController` to replace unsafe direct Win32 `SetWindowPos` calls with `reposition_overlay` in `OverlayManager` trait. Updated both `LiveOverlayManager` and `MockOverlayManager` to implement this. This enables proper coordinate tracking in tests and cleaner architecture.
+- **Window Snap (Win+Arrow) Debouncing**: Implemented 150ms debouncing for overlay repositioning/redrawing using Win32 event timers (`SetTimer`/`KillTimer`) when windows are moved outside manual move loops (e.g. Aero Snapping).
+- **Hiding during snaps/moves**: Pinned overlays are now immediately hidden during snapping and transitions, only reappearing and repositioning after the window settles, eliminating visual jitter and alignment mismatches during animation.
+- **Synchronous test path**: Added a `synchronous_window_moves` flag to `AppController` to support synchronous execution in existing unit tests, and wrote a new test `test_window_moved_debounces_and_updates_on_timer` verifying the debouncing mechanism.
+- **TDD & Unit Testing:** All 47 tests pass successfully.
 
 ## 3. Current Task State
-- **Active Task:** None. Accent overlay resizing inconsistencies and the 7px top offset adjustments are fully complete.
-- **Status:** All changes tested and verified.
+- **Active Task:** None. Snapping debouncing and overlay hiding fixes are complete.
+- **Status:** Uncommitted changes ready to be committed on branch `fix/accent-overlay-resize`.
 
 ## 4. Pending / Next Steps
-- Commit and merge the changes on `fix/accent-overlay-resize` to master/main (pending user approval/request).
+- Commit the debouncing improvements to branch `fix/accent-overlay-resize` and push to remote.
 
 ## 5. System State & Compile Verification
 - **Code compiles:** Yes (`cargo check` and `cargo build` successful)
-- **Tests passing:** Yes (`cargo test` successful: 46 tests passed)
+- **Tests passing:** Yes (`cargo test` successful: 47 tests passed)

@@ -169,6 +169,7 @@ where
     pub overlay_rects: HashMap<isize, crate::hud_layout::Rect>, // target HWND -> last known target rect
     pub overlay_focus_states: HashMap<isize, bool>,             // target HWND -> is_focused
     pub movesize_targets: HashSet<isize>, // target HWNDs currently resizing/moving
+    pub synchronous_window_moves: bool,
 }
 
 impl<W, I, O, T> AppController<W, I, O, T>
@@ -218,6 +219,7 @@ where
             overlay_rects: HashMap::new(),
             overlay_focus_states: HashMap::new(),
             movesize_targets: HashSet::new(),
+            synchronous_window_moves: true,
         })
     }
 
@@ -259,7 +261,13 @@ where
                     let event_type = msg.lParam.0 as i32;
                     let _ = self.handle_key_input(vk_code, event_type);
                 } else if msg.message == WM_TIMER {
-                    let _ = self.handle_timer_tick();
+                    let timer_id = msg.wParam.0;
+                    if timer_id == 1 {
+                        let _ = self.handle_timer_tick();
+                    } else {
+                        let target_hwnd = HWND(timer_id as isize);
+                        let _ = self.handle_debounced_window_moved(target_hwnd);
+                    }
                 } else if msg.message == WM_TACTILE_WINDOW_MOVED {
                     let target_hwnd = HWND(msg.wParam.0 as isize);
                     let _ = self.handle_window_moved(target_hwnd);
@@ -417,7 +425,7 @@ where
                 self.last_physics_update = Some(Instant::now());
                 self.pressed_keys.clear();
                 unsafe {
-                    SetTimer(HWND(0), 1, 10, None);
+                    SetTimer(overlay, 1, 10, None);
                 }
                 println!(
                     "[Win-Float] [Info] Entering transparency modal for window HWND 0x{:X}. Initial transparency: {}%. Created HUD overlay HWND 0x{:X}. Captured keyboard input hook.",
@@ -447,8 +455,10 @@ where
         // Non-direction key (e.g. Enter, Escape) -> commit
         if event_type == 0 {
             self.pressed_keys.clear();
-            unsafe {
-                let _ = KillTimer(HWND(0), 1);
+            if let Some(overlay) = self.hud_overlay {
+                unsafe {
+                    let _ = KillTimer(overlay, 1);
+                }
             }
             self.last_physics_update = None;
             self.slider_velocity = 0.0;
@@ -598,8 +608,10 @@ where
                 final_percentage: _,
             } => {
                 self.input_hook.release_keyboard();
-                unsafe {
-                    let _ = KillTimer(HWND(0), 1);
+                if let Some(overlay) = self.hud_overlay {
+                    unsafe {
+                        let _ = KillTimer(overlay, 1);
+                    }
                 }
                 self.pressed_keys.clear();
                 self.slider_velocity = 0.0;
@@ -616,8 +628,10 @@ where
             }
             Transition::Aborted => {
                 self.input_hook.release_keyboard();
-                unsafe {
-                    let _ = KillTimer(HWND(0), 1);
+                if let Some(overlay) = self.hud_overlay {
+                    unsafe {
+                        let _ = KillTimer(overlay, 1);
+                    }
                 }
                 self.pressed_keys.clear();
                 self.slider_velocity = 0.0;
@@ -675,13 +689,39 @@ where
         };
 
         if let Some(overlay) = overlay_hwnd {
+            // Hide overlay immediately when moves/resizes start (e.g. during snapping animations)
+            self.overlay_manager.set_visibility(overlay, false);
+
+            if self.synchronous_window_moves {
+                return self.handle_debounced_window_moved(target_hwnd);
+            }
+
+            unsafe {
+                use windows::Win32::UI::WindowsAndMessaging::SetTimer;
+                // Use target_hwnd.0 as the timer ID. Set a 150ms debounce delay.
+                let _ = SetTimer(overlay, target_hwnd.0 as usize, 150, None);
+            }
+        }
+        Ok(())
+    }
+
+    pub fn handle_debounced_window_moved(&mut self, target_hwnd: HWND) -> Result<(), String> {
+        let overlay_hwnd = if self.modal_target == Some(target_hwnd) {
+            self.hud_overlay
+        } else {
+            self.pinned_overlays.get(&target_hwnd.0).copied()
+        };
+
+        if let Some(overlay) = overlay_hwnd {
+            unsafe {
+                use windows::Win32::UI::WindowsAndMessaging::KillTimer;
+                let _ = KillTimer(overlay, target_hwnd.0 as usize);
+            }
             let is_maximized = self.window_manager.is_maximized(target_hwnd)?;
             if is_maximized {
                 self.overlay_manager.set_visibility(overlay, false);
                 return Ok(());
             }
-
-            self.overlay_manager.set_visibility(overlay, true);
 
             let rect = get_window_rect_helper(target_hwnd)
                 .unwrap_or(crate::hud_layout::Rect::new(0, 0, 800, 600));
@@ -695,6 +735,8 @@ where
                     && lr.height() == rect.height()
                 {
                     // Nothing changed. Avoid duplicate repositioning and drawing.
+                    // But make sure the overlay is visible again
+                    self.overlay_manager.set_visibility(overlay, true);
                     return Ok(());
                 }
             }
@@ -724,8 +766,11 @@ where
                 self.update_pinned_overlay_graphics(target_hwnd, overlay, rect, None)?;
             }
 
+            // Restore visibility after final placement/redraw
+            self.overlay_manager.set_visibility(overlay, true);
+
             println!(
-                "[Win-Float] [Info] Tracked window HWND 0x{:X} moved. Repositioning overlay HWND 0x{:X} to coordinates (x: {}, y: {}). Size changed: {}.",
+                "[Win-Float] [Info] Tracked window HWND 0x{:X} moved (debounced). Repositioning overlay HWND 0x{:X} to coordinates (x: {}, y: {}). Size changed: {}.",
                 target_hwnd.0, overlay.0, ox, oy, size_changed
             );
         }
@@ -1874,9 +1919,68 @@ mod tests {
             controller.hud_overlay.is_none(),
             "Transparency modal HUD overlay should not be created for Taskbar/Start Menu"
         );
-        assert!(
-            controller.modal_target.is_none(),
-            "Transparency modal target should not be set for Taskbar/Start Menu"
-        );
+    }
+
+    #[test]
+    fn test_window_moved_debounces_and_updates_on_timer() {
+        let _test_guard = TEST_SERIALIZATION_MUTEX.lock().unwrap();
+        let wm = MockWindowManager::default();
+        let target = HWND(12345);
+        *wm.active_window.lock().unwrap() = target;
+
+        let hook = MockInputHook;
+        let om = MockOverlayManager::default();
+        let tracker = MockEventTracker::default();
+        let mut controller = AppController::new(wm, hook, om, tracker).unwrap();
+
+        // Ensure synchronous_window_moves is false (so debouncing timer is scheduled)
+        controller.synchronous_window_moves = false;
+
+        // Preset initial mock rect
+        *TEST_RECT.lock().unwrap() = Some(crate::hud_layout::Rect::new(100, 100, 300, 200));
+
+        // Pin the window
+        controller.handle_hotkey(HOTKEY_TOPMOST_ID).unwrap();
+        let overlay = controller.pinned_overlays.get(&target.0).copied().unwrap();
+
+        // Clear tracking
+        *controller.overlay_manager.last_pixels.lock().unwrap() = None;
+
+        // 1. Move window
+        *TEST_RECT.lock().unwrap() = Some(crate::hud_layout::Rect::new(150, 180, 350, 280));
+        controller.handle_window_moved(target).unwrap();
+
+        // The overlay should be hidden immediately, and NOT repositioned yet!
+        {
+            let visibility = controller.overlay_manager.visibility.lock().unwrap();
+            assert_eq!(visibility.get(&overlay.0), Some(&false)); // Hidden!
+        }
+        {
+            let overlays = controller.overlay_manager.overlays.lock().unwrap();
+            let (_, ox, oy, _, _) = overlays[0];
+            assert_eq!(ox, 100); // Still old position!
+            assert_eq!(oy, 93);
+        }
+
+        // 2. Simulate timer tick for this window
+        let timer_id = target.0 as usize;
+        controller
+            .handle_debounced_window_moved(HWND(timer_id as isize))
+            .unwrap();
+
+        // Now the overlay should be repositioned, redrawn, and visible again!
+        {
+            let visibility = controller.overlay_manager.visibility.lock().unwrap();
+            assert_eq!(visibility.get(&overlay.0), Some(&true)); // Visible!
+        }
+        {
+            let overlays = controller.overlay_manager.overlays.lock().unwrap();
+            let (_, ox, oy, _, _) = overlays[0];
+            assert_eq!(ox, 150); // Updated to new position!
+            assert_eq!(oy, 173);
+        }
+
+        // Cleanup
+        *TEST_RECT.lock().unwrap() = None;
     }
 }

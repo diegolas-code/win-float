@@ -100,5 +100,8 @@ Follow the TDD cycle strictly: write failing test -> verify -> write minimal imp
   - Position overlay 7px taller from the top side (`y = rect.top - 7` and `height = rect.height() + 7`) to float symmetrically over Windows 10/11 invisible borders.
   - Decouple direct Win32 `SetWindowPos` calls using `reposition_overlay` method in `OverlayManager` trait.
   - Verify with unit tests (`test_always_on_top_overlay_hidden_when_maximized`, `test_window_moved_does_not_redraw_if_size_unchanged`, etc.).
-
-
+- [x] **Task 25: Window snap (Win+Arrow) debouncing and overlay animations hiding**
+  - Immediately hide overlay on window movement to prevent misalignment during transition animations.
+  - Debounce layout repositioning and redrawing by 150ms using Win32 event timers on target window handle IDs.
+  - Implement a `synchronous_window_moves` flag to support test synchronization.
+  - Verify with new unit test `test_window_moved_debounces_and_updates_on_timer`.

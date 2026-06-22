@@ -239,6 +239,7 @@ fn main() -> Result<(), String> {
 
     println!("[Win-Float] [Info] Entering message loop. Registering global hotkeys...");
     let mut controller = AppController::new(wm, hook, om, tracker)?;
+    controller.synchronous_window_moves = false;
     let res = controller.run();
     println!("[Win-Float] [Info] Message loop exited. Cleaning up resource handles.");
     res
