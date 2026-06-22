@@ -19,13 +19,25 @@ pub enum AdjustmentAction {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Transition {
     None,
-    Changed { target_hwnd: HWND, new_percentage: u8 },
-    Committed { target_hwnd: HWND, final_percentage: u8 },
+    Changed {
+        target_hwnd: HWND,
+        new_percentage: u8,
+    },
+    Committed {
+        target_hwnd: HWND,
+        final_percentage: u8,
+    },
     Aborted,
 }
 
 pub struct StateMachine {
     mode: Mode,
+}
+
+impl Default for StateMachine {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl StateMachine {
@@ -52,54 +64,58 @@ impl StateMachine {
     pub fn handle_action(&mut self, action: AdjustmentAction) -> Transition {
         match self.mode {
             Mode::Idle => Transition::None,
-            Mode::TransparencyModal { target_hwnd, current_percentage } => {
-                match action {
-                    AdjustmentAction::Decrease => {
-                        let new_percentage = if current_percentage >= 60 + 2 {
-                            current_percentage - 2
-                        } else {
-                            60
-                        };
-                        self.mode = Mode::TransparencyModal {
-                            target_hwnd,
-                            current_percentage: new_percentage,
-                        };
-                        Transition::Changed {
-                            target_hwnd,
-                            new_percentage,
-                        }
-                    }
-                    AdjustmentAction::Increase => {
-                        let new_percentage = if current_percentage + 2 <= 100 {
-                            current_percentage + 2
-                        } else {
-                            100
-                        };
-                        self.mode = Mode::TransparencyModal {
-                            target_hwnd,
-                            current_percentage: new_percentage,
-                        };
-                        Transition::Changed {
-                            target_hwnd,
-                            new_percentage,
-                        }
-                    }
-                    AdjustmentAction::Commit => {
-                        self.mode = Mode::Idle;
-                        Transition::Committed {
-                            target_hwnd,
-                            final_percentage: current_percentage,
-                        }
+            Mode::TransparencyModal {
+                target_hwnd,
+                current_percentage,
+            } => match action {
+                AdjustmentAction::Decrease => {
+                    let new_percentage = if current_percentage >= 60 + 2 {
+                        current_percentage - 2
+                    } else {
+                        60
+                    };
+                    self.mode = Mode::TransparencyModal {
+                        target_hwnd,
+                        current_percentage: new_percentage,
+                    };
+                    Transition::Changed {
+                        target_hwnd,
+                        new_percentage,
                     }
                 }
-            }
+                AdjustmentAction::Increase => {
+                    let new_percentage = if current_percentage + 2 <= 100 {
+                        current_percentage + 2
+                    } else {
+                        100
+                    };
+                    self.mode = Mode::TransparencyModal {
+                        target_hwnd,
+                        current_percentage: new_percentage,
+                    };
+                    Transition::Changed {
+                        target_hwnd,
+                        new_percentage,
+                    }
+                }
+                AdjustmentAction::Commit => {
+                    self.mode = Mode::Idle;
+                    Transition::Committed {
+                        target_hwnd,
+                        final_percentage: current_percentage,
+                    }
+                }
+            },
         }
     }
 
     pub fn handle_window_change(&mut self, current_active_hwnd: HWND) -> Transition {
         match self.mode {
             Mode::Idle => Transition::None,
-            Mode::TransparencyModal { target_hwnd, current_percentage } => {
+            Mode::TransparencyModal {
+                target_hwnd,
+                current_percentage,
+            } => {
                 if current_active_hwnd != target_hwnd {
                     self.mode = Mode::Idle;
                     Transition::Committed {
@@ -124,7 +140,11 @@ impl StateMachine {
     }
 
     pub fn set_percentage(&mut self, percentage: u8) {
-        if let Mode::TransparencyModal { target_hwnd: _, ref mut current_percentage } = self.mode {
+        if let Mode::TransparencyModal {
+            target_hwnd: _,
+            ref mut current_percentage,
+        } = self.mode
+        {
             *current_percentage = percentage;
         }
     }
@@ -193,7 +213,7 @@ mod tests {
     fn test_adjust_clamping() {
         let mut sm = StateMachine::new();
         let hwnd = HWND(12345);
-        
+
         // Clamp min
         sm.enter_modal(hwnd, 3);
         let trans = sm.handle_action(AdjustmentAction::Decrease);

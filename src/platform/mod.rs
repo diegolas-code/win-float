@@ -1,2 +1,2 @@
-pub mod window;
 pub mod hook;
+pub mod window;

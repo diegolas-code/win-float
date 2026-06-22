@@ -1,20 +1,24 @@
-use std::collections::{HashMap, HashSet};
-use std::time::Instant;
-use crate::traits::{WindowManager, InputHook, OverlayManager, EventTracker};
-use crate::state_machine::{StateMachine, Mode, AdjustmentAction, Transition};
+#![allow(clippy::collapsible_if, clippy::identity_op, clippy::unnecessary_cast)]
+
+use crate::app::tracker::{
+    WM_TACTILE_FOCUS_CHANGED, WM_TACTILE_WINDOW_CLOSED, WM_TACTILE_WINDOW_MOVED,
+};
 use crate::platform::hook::WM_TACTILE_KEY_EVENT;
-use crate::app::tracker::{WM_TACTILE_WINDOW_MOVED, WM_TACTILE_WINDOW_CLOSED, WM_TACTILE_FOCUS_CHANGED};
-use windows::Win32::Foundation::{HWND, RECT, BOOL};
-use windows::Win32::UI::WindowsAndMessaging::{
-    GetWindowRect, GetMessageW, MSG, WM_HOTKEY, WM_TIMER, SetTimer, KillTimer,
-    GetAncestor, GetWindow, GA_ROOTOWNER, GW_OWNER,
-};
-use windows::Win32::UI::Input::KeyboardAndMouse::{
-    RegisterHotKey, UnregisterHotKey, MOD_CONTROL, MOD_WIN, MOD_SHIFT, VK_F11,
-};
-use windows::Win32::Graphics::Dwm::DwmGetColorizationColor;
-use tiny_skia::Color;
+use crate::state_machine::{AdjustmentAction, Mode, StateMachine, Transition};
+use crate::traits::{EventTracker, InputHook, OverlayManager, WindowManager};
+use std::collections::{HashMap, HashSet};
 use std::process::ChildStdin;
+use std::time::Instant;
+use tiny_skia::Color;
+use windows::Win32::Foundation::{BOOL, HWND, RECT};
+use windows::Win32::Graphics::Dwm::DwmGetColorizationColor;
+use windows::Win32::UI::Input::KeyboardAndMouse::{
+    MOD_CONTROL, MOD_SHIFT, MOD_WIN, RegisterHotKey, UnregisterHotKey, VK_F11,
+};
+use windows::Win32::UI::WindowsAndMessaging::{
+    GA_ROOTOWNER, GW_OWNER, GetAncestor, GetMessageW, GetWindow, GetWindowRect, KillTimer, MSG,
+    SetTimer, WM_HOTKEY, WM_TIMER,
+};
 
 const HOTKEY_TOPMOST_ID: i32 = 1;
 const HOTKEY_MODAL_ID: i32 = 2;
@@ -37,7 +41,12 @@ fn get_window_rect_helper(hwnd: HWND) -> Result<crate::hud_layout::Rect, String>
     if res.is_err() {
         return Err("GetWindowRect failed".to_string());
     }
-    Ok(crate::hud_layout::Rect::new(rect.left, rect.top, rect.right, rect.bottom))
+    Ok(crate::hud_layout::Rect::new(
+        rect.left,
+        rect.top,
+        rect.right,
+        rect.bottom,
+    ))
 }
 
 #[cfg(test)]
@@ -62,9 +71,8 @@ fn get_window_class_name(hwnd: HWND) -> String {
     }
 
     let mut class_name = [0u16; 256];
-    let len = unsafe {
-        windows::Win32::UI::WindowsAndMessaging::GetClassNameW(hwnd, &mut class_name)
-    };
+    let len =
+        unsafe { windows::Win32::UI::WindowsAndMessaging::GetClassNameW(hwnd, &mut class_name) };
     if len <= 0 {
         return String::new();
     }
@@ -123,9 +131,7 @@ fn load_system_font() -> Result<ab_glyph::FontArc, String> {
 pub fn get_system_accent_color() -> Color {
     let mut colorization_color: u32 = 0;
     let mut opaque_blend: BOOL = Default::default();
-    let res = unsafe {
-        DwmGetColorizationColor(&mut colorization_color, &mut opaque_blend)
-    };
+    let res = unsafe { DwmGetColorizationColor(&mut colorization_color, &mut opaque_blend) };
     if res.is_ok() {
         let a = ((colorization_color >> 24) & 0xFF) as u8;
         let r = ((colorization_color >> 16) & 0xFF) as u8;
@@ -160,7 +166,7 @@ where
     pub slider_percentage: f32,
     pub last_physics_update: Option<Instant>,
     pub overlay_rects: HashMap<isize, crate::hud_layout::Rect>, // target HWND -> last known target rect
-    pub overlay_focus_states: HashMap<isize, bool>, // target HWND -> is_focused
+    pub overlay_focus_states: HashMap<isize, bool>,             // target HWND -> is_focused
 }
 
 impl<W, I, O, T> AppController<W, I, O, T>
@@ -170,7 +176,12 @@ where
     O: OverlayManager,
     T: EventTracker,
 {
-    pub fn new(window_manager: W, input_hook: I, overlay_manager: O, event_tracker: T) -> Result<Self, String> {
+    pub fn new(
+        window_manager: W,
+        input_hook: I,
+        overlay_manager: O,
+        event_tracker: T,
+    ) -> Result<Self, String> {
         let watchdog_stdin = if cfg!(test) {
             None
         } else {
@@ -230,7 +241,9 @@ where
                 return Err("Failed to register modal toggle hotkey".to_string());
             }
         }
-        println!("[Win-Float] [Info] Hotkeys registered: Ctrl+Win+F11 (Toggle Pin), Shift+Win+F11 (Transparency Mode).");
+        println!(
+            "[Win-Float] [Info] Hotkeys registered: Ctrl+Win+F11 (Toggle Pin), Shift+Win+F11 (Transparency Mode)."
+        );
 
         let mut msg = MSG::default();
         unsafe {
@@ -256,7 +269,7 @@ where
                     let _ = self.handle_focus_changed(target_hwnd, new_fg_hwnd);
                 }
 
-                use windows::Win32::UI::WindowsAndMessaging::{TranslateMessage, DispatchMessageW};
+                use windows::Win32::UI::WindowsAndMessaging::{DispatchMessageW, TranslateMessage};
                 TranslateMessage(&msg);
                 DispatchMessageW(&msg);
             }
@@ -272,7 +285,9 @@ where
                 let active = self.window_manager.get_active_window()?;
                 if active.0 == 0 || self.window_manager.is_taskbar_or_start_menu(active)? {
                     if active.0 != 0 {
-                        println!("[Win-Float] [Info] Ignoring pin hotkey because target window is Taskbar or Start Menu.");
+                        println!(
+                            "[Win-Float] [Info] Ignoring pin hotkey because target window is Taskbar or Start Menu."
+                        );
                     }
                     return Ok(());
                 }
@@ -283,10 +298,17 @@ where
                 self.window_manager.set_always_on_top(active, new_state)?;
 
                 if new_state {
-                    let rect = get_window_rect_helper(active).unwrap_or(crate::hud_layout::Rect::new(0, 0, 800, 600));
+                    let rect = get_window_rect_helper(active)
+                        .unwrap_or(crate::hud_layout::Rect::new(0, 0, 800, 600));
                     let width = rect.width();
                     let height = rect.height() + 8;
-                    let overlay = self.overlay_manager.create_overlay(active, rect.left, rect.top - 8, width, height)?;
+                    let overlay = self.overlay_manager.create_overlay(
+                        active,
+                        rect.left,
+                        rect.top - 8,
+                        width,
+                        height,
+                    )?;
 
                     self.update_pinned_overlay_graphics(active, overlay, rect, None)?;
                     self.event_tracker.start_tracking(active, overlay)?;
@@ -297,7 +319,10 @@ where
                         let _ = writeln!(stdin, "PIN 0x{:X}", active.0);
                         let _ = stdin.flush();
                     }
-                    println!("[Win-Float] [Info] Pinned window HWND 0x{:X}. Created overlay HWND 0x{:X} spanning the entire window.", active.0, overlay.0);
+                    println!(
+                        "[Win-Float] [Info] Pinned window HWND 0x{:X}. Created overlay HWND 0x{:X} spanning the entire window.",
+                        active.0, overlay.0
+                    );
                 } else if let Some(overlay) = self.pinned_overlays.remove(&active.0) {
                     self.event_tracker.stop_tracking(active);
                     self.overlay_manager.destroy_overlay(overlay);
@@ -308,7 +333,10 @@ where
                         let _ = writeln!(stdin, "UNPIN 0x{:X}", active.0);
                         let _ = stdin.flush();
                     }
-                    println!("[Win-Float] [Info] Unpinned window HWND 0x{:X}. Destroyed overlay HWND 0x{:X}.", active.0, overlay.0);
+                    println!(
+                        "[Win-Float] [Info] Unpinned window HWND 0x{:X}. Destroyed overlay HWND 0x{:X}.",
+                        active.0, overlay.0
+                    );
                 }
             }
             HOTKEY_MODAL_ID => {
@@ -321,7 +349,9 @@ where
                 let active = self.window_manager.get_active_window()?;
                 if active.0 == 0 || self.window_manager.is_taskbar_or_start_menu(active)? {
                     if active.0 != 0 {
-                        println!("[Win-Float] [Info] Ignoring transparency hotkey because target window is Taskbar or Start Menu.");
+                        println!(
+                            "[Win-Float] [Info] Ignoring transparency hotkey because target window is Taskbar or Start Menu."
+                        );
                     }
                     return Ok(());
                 }
@@ -348,17 +378,25 @@ where
                 let _ = self.state_machine.enter_modal(active, current_trans);
                 self.input_hook.capture_keyboard()?;
 
-                let rect = get_window_rect_helper(active).unwrap_or(crate::hud_layout::Rect::new(0, 0, 800, 600));
+                let rect = get_window_rect_helper(active)
+                    .unwrap_or(crate::hud_layout::Rect::new(0, 0, 800, 600));
                 let hud_w = 200;
                 let hud_h = 80;
                 let (hx, hy) = crate::hud_layout::calculate_hud_position(rect, hud_w, hud_h);
-                let overlay = self.overlay_manager.create_overlay(active, hx, hy, hud_w, hud_h)?;
+                let overlay = self
+                    .overlay_manager
+                    .create_overlay(active, hx, hy, hud_w, hud_h)?;
 
                 let mut canvas = crate::ui::overlay::Canvas::new(hud_w as u32, hud_h as u32)?;
                 let accent = get_system_accent_color();
                 crate::ui::draw::draw_hud(&mut canvas, current_trans, &self.font, accent)?;
 
-                self.overlay_manager.update_overlay(overlay, canvas.pixels(), hud_w as u32, hud_h as u32)?;
+                self.overlay_manager.update_overlay(
+                    overlay,
+                    canvas.pixels(),
+                    hud_w as u32,
+                    hud_h as u32,
+                )?;
                 self.hud_overlay = Some(overlay);
                 self.modal_target = Some(active);
                 self.event_tracker.start_tracking(active, overlay)?;
@@ -366,8 +404,13 @@ where
                 self.slider_velocity = 0.0;
                 self.last_physics_update = Some(Instant::now());
                 self.pressed_keys.clear();
-                unsafe { SetTimer(HWND(0), 1, 10, None); }
-                println!("[Win-Float] [Info] Entering transparency modal for window HWND 0x{:X}. Initial transparency: {}%. Created HUD overlay HWND 0x{:X}. Captured keyboard input hook.", active.0, current_trans, overlay.0);
+                unsafe {
+                    SetTimer(HWND(0), 1, 10, None);
+                }
+                println!(
+                    "[Win-Float] [Info] Entering transparency modal for window HWND 0x{:X}. Initial transparency: {}%. Created HUD overlay HWND 0x{:X}. Captured keyboard input hook.",
+                    active.0, current_trans, overlay.0
+                );
             }
             _ => {}
         }
@@ -375,7 +418,10 @@ where
     }
 
     pub fn handle_key_input(&mut self, vk_code: u32, event_type: i32) -> Result<(), String> {
-        let is_direction_key = matches!(vk_code, 0x25 | 0x28 | 0xBD | 0x6D | 0x27 | 0x26 | 0xBB | 0x6B);
+        let is_direction_key = matches!(
+            vk_code,
+            0x25 | 0x28 | 0xBD | 0x6D | 0x27 | 0x26 | 0xBB | 0x6B
+        );
 
         if is_direction_key {
             if event_type == 0 {
@@ -389,7 +435,9 @@ where
         // Non-direction key (e.g. Enter, Escape) -> commit
         if event_type == 0 {
             self.pressed_keys.clear();
-            unsafe { let _ = KillTimer(HWND(0), 1); }
+            unsafe {
+                let _ = KillTimer(HWND(0), 1);
+            }
             self.last_physics_update = None;
             self.slider_velocity = 0.0;
             let trans = self.state_machine.handle_action(AdjustmentAction::Commit);
@@ -460,14 +508,21 @@ where
                         self.original_window_states.insert(target_hwnd.0, info);
                         if let Some(ref mut stdin) = self.watchdog_stdin {
                             use std::io::Write;
-                            let _ = writeln!(stdin, "ADD 0x{:X} {} {} {} {} {}", target_hwnd.0, info.0, info.1, info.2, info.3, info.4);
+                            let _ = writeln!(
+                                stdin,
+                                "ADD 0x{:X} {} {} {} {} {}",
+                                target_hwnd.0, info.0, info.1, info.2, info.3, info.4
+                            );
                             let _ = stdin.flush();
                         }
                     }
                 }
 
                 self.window_manager.set_transparency(target_hwnd, alpha)?;
-                println!("[Win-Float] [Info] Transparency level adjusted to {}% (Alpha: {}).", new_pct, alpha);
+                println!(
+                    "[Win-Float] [Info] Transparency level adjusted to {}% (Alpha: {}).",
+                    new_pct, alpha
+                );
 
                 // Update the state machine's internal percentage
                 self.state_machine.set_percentage(new_pct);
@@ -478,7 +533,8 @@ where
                     let mut canvas = crate::ui::overlay::Canvas::new(hud_w, hud_h)?;
                     let accent = get_system_accent_color();
                     crate::ui::draw::draw_hud(&mut canvas, new_pct, &self.font, accent)?;
-                    self.overlay_manager.update_overlay(overlay, canvas.pixels(), hud_w, hud_h)?;
+                    self.overlay_manager
+                        .update_overlay(overlay, canvas.pixels(), hud_w, hud_h)?;
                 }
             }
         }
@@ -488,7 +544,10 @@ where
 
     fn apply_transition(&mut self, trans: Transition) -> Result<(), String> {
         match trans {
-            Transition::Changed { target_hwnd, new_percentage } => {
+            Transition::Changed {
+                target_hwnd,
+                new_percentage,
+            } => {
                 let alpha = crate::transparency_calc::percentage_to_alpha(new_percentage);
 
                 if !self.original_window_states.contains_key(&target_hwnd.0) {
@@ -496,14 +555,21 @@ where
                         self.original_window_states.insert(target_hwnd.0, info);
                         if let Some(ref mut stdin) = self.watchdog_stdin {
                             use std::io::Write;
-                            let _ = writeln!(stdin, "ADD 0x{:X} {} {} {} {} {}", target_hwnd.0, info.0, info.1, info.2, info.3, info.4);
+                            let _ = writeln!(
+                                stdin,
+                                "ADD 0x{:X} {} {} {} {} {}",
+                                target_hwnd.0, info.0, info.1, info.2, info.3, info.4
+                            );
                             let _ = stdin.flush();
                         }
                     }
                 }
 
                 self.window_manager.set_transparency(target_hwnd, alpha)?;
-                println!("[Win-Float] [Info] Transparency level adjusted to {}% (Alpha: {}).", new_percentage, alpha);
+                println!(
+                    "[Win-Float] [Info] Transparency level adjusted to {}% (Alpha: {}).",
+                    new_percentage, alpha
+                );
 
                 if let Some(overlay) = self.hud_overlay {
                     let hud_w = 200;
@@ -511,12 +577,18 @@ where
                     let mut canvas = crate::ui::overlay::Canvas::new(hud_w, hud_h)?;
                     let accent = get_system_accent_color();
                     crate::ui::draw::draw_hud(&mut canvas, new_percentage, &self.font, accent)?;
-                    self.overlay_manager.update_overlay(overlay, canvas.pixels(), hud_w, hud_h)?;
+                    self.overlay_manager
+                        .update_overlay(overlay, canvas.pixels(), hud_w, hud_h)?;
                 }
             }
-            Transition::Committed { target_hwnd, final_percentage: _ } => {
+            Transition::Committed {
+                target_hwnd,
+                final_percentage: _,
+            } => {
                 self.input_hook.release_keyboard();
-                unsafe { let _ = KillTimer(HWND(0), 1); }
+                unsafe {
+                    let _ = KillTimer(HWND(0), 1);
+                }
                 self.pressed_keys.clear();
                 self.slider_velocity = 0.0;
                 self.last_physics_update = None;
@@ -525,16 +597,28 @@ where
                     self.overlay_manager.destroy_overlay(overlay);
                 }
                 self.modal_target = None;
-                println!("[Win-Float] [Info] Committing transparency changes for window HWND 0x{:X}. Released keyboard input hook. Destroyed HUD overlay.", target_hwnd.0);
+                println!(
+                    "[Win-Float] [Info] Committing transparency changes for window HWND 0x{:X}. Released keyboard input hook. Destroyed HUD overlay.",
+                    target_hwnd.0
+                );
             }
             Transition::Aborted => {
                 self.input_hook.release_keyboard();
-                unsafe { let _ = KillTimer(HWND(0), 1); }
+                unsafe {
+                    let _ = KillTimer(HWND(0), 1);
+                }
                 self.pressed_keys.clear();
                 self.slider_velocity = 0.0;
                 self.last_physics_update = None;
                 if let Some(target) = self.modal_target {
-                    if let Some(&(was_layered, original_alpha, original_cr_key, original_flags, original_style)) = self.original_window_states.get(&target.0) {
+                    if let Some(&(
+                        was_layered,
+                        original_alpha,
+                        original_cr_key,
+                        original_flags,
+                        original_style,
+                    )) = self.original_window_states.get(&target.0)
+                    {
                         let _ = self.window_manager.restore_window_style_info(
                             target,
                             was_layered,
@@ -558,7 +642,9 @@ where
                     self.overlay_manager.destroy_overlay(overlay);
                 }
                 self.modal_target = None;
-                println!("[Win-Float] [Info] Aborting transparency changes. Reverting adjustments. Released keyboard input hook. Destroyed HUD overlay.");
+                println!(
+                    "[Win-Float] [Info] Aborting transparency changes. Reverting adjustments. Released keyboard input hook. Destroyed HUD overlay."
+                );
             }
             Transition::None => {}
         }
@@ -573,12 +659,17 @@ where
         };
 
         if let Some(overlay) = overlay_hwnd {
-            let rect = get_window_rect_helper(target_hwnd).unwrap_or(crate::hud_layout::Rect::new(0, 0, 800, 600));
-            
+            let rect = get_window_rect_helper(target_hwnd)
+                .unwrap_or(crate::hud_layout::Rect::new(0, 0, 800, 600));
+
             let last_rect = self.overlay_rects.get(&target_hwnd.0).copied();
-            
+
             if let Some(lr) = last_rect {
-                if lr.left == rect.left && lr.top == rect.top && lr.width() == rect.width() && lr.height() == rect.height() {
+                if lr.left == rect.left
+                    && lr.top == rect.top
+                    && lr.width() == rect.width()
+                    && lr.height() == rect.height()
+                {
                     // Nothing changed. Avoid duplicate repositioning and drawing.
                     return Ok(());
                 }
@@ -602,7 +693,9 @@ where
             };
 
             unsafe {
-                use windows::Win32::UI::WindowsAndMessaging::{SetWindowPos, SWP_NOZORDER, SWP_NOACTIVATE};
+                use windows::Win32::UI::WindowsAndMessaging::{
+                    SWP_NOACTIVATE, SWP_NOZORDER, SetWindowPos,
+                };
                 let _ = SetWindowPos(
                     overlay,
                     HWND(0),
@@ -618,7 +711,10 @@ where
                 self.update_pinned_overlay_graphics(target_hwnd, overlay, rect, None)?;
             }
 
-            println!("[Win-Float] [Info] Tracked window HWND 0x{:X} moved. Repositioning overlay HWND 0x{:X} to coordinates (x: {}, y: {}). Size changed: {}.", target_hwnd.0, overlay.0, ox, oy, size_changed);
+            println!(
+                "[Win-Float] [Info] Tracked window HWND 0x{:X} moved. Repositioning overlay HWND 0x{:X} to coordinates (x: {}, y: {}). Size changed: {}.",
+                target_hwnd.0, overlay.0, ox, oy, size_changed
+            );
         }
         Ok(())
     }
@@ -632,20 +728,33 @@ where
         }
 
         if self.modal_target == Some(target_hwnd) {
-            println!("[Win-Float] [Info] Tracked window HWND 0x{:X} closed while in transparency modal.", target_hwnd.0);
+            println!(
+                "[Win-Float] [Info] Tracked window HWND 0x{:X} closed while in transparency modal.",
+                target_hwnd.0
+            );
             let trans = self.state_machine.handle_window_closed();
             self.apply_transition(trans)?;
         } else if let Some(overlay) = self.pinned_overlays.remove(&target_hwnd.0) {
-            println!("[Win-Float] [Info] Tracked window HWND 0x{:X} closed. Stopping track and cleaning up overlay HWND 0x{:X}.", target_hwnd.0, overlay.0);
+            println!(
+                "[Win-Float] [Info] Tracked window HWND 0x{:X} closed. Stopping track and cleaning up overlay HWND 0x{:X}.",
+                target_hwnd.0, overlay.0
+            );
             self.event_tracker.stop_tracking(target_hwnd);
             self.overlay_manager.destroy_overlay(overlay);
         }
         Ok(())
     }
 
-    pub fn handle_focus_changed(&mut self, target_hwnd: HWND, new_fg_hwnd: HWND) -> Result<(), String> {
+    pub fn handle_focus_changed(
+        &mut self,
+        target_hwnd: HWND,
+        new_fg_hwnd: HWND,
+    ) -> Result<(), String> {
         let class_name = get_window_class_name(new_fg_hwnd);
-        if class_name == "ForegroundStaging" || class_name == "XamlExplorerHostIslandWindow" || class_name == "MultitaskingViewFrame" {
+        if class_name == "ForegroundStaging"
+            || class_name == "XamlExplorerHostIslandWindow"
+            || class_name == "MultitaskingViewFrame"
+        {
             // Ignore transient focus transitions
             return Ok(());
         }
@@ -653,9 +762,11 @@ where
         if let Some(&overlay) = self.pinned_overlays.get(&target_hwnd.0) {
             let root_fg = get_root_window(new_fg_hwnd);
             let is_focused = target_hwnd == root_fg || new_fg_hwnd == overlay || root_fg == overlay;
-            
-            println!("[Win-Float] [Debug] handle_focus_changed: target = 0x{:X}, new_fg = 0x{:X}, root_fg = 0x{:X}, overlay = 0x{:X}, is_focused = {}",
-                target_hwnd.0, new_fg_hwnd.0, root_fg.0, overlay.0, is_focused);
+
+            println!(
+                "[Win-Float] [Debug] handle_focus_changed: target = 0x{:X}, new_fg = 0x{:X}, root_fg = 0x{:X}, overlay = 0x{:X}, is_focused = {}",
+                target_hwnd.0, new_fg_hwnd.0, root_fg.0, overlay.0, is_focused
+            );
 
             let last_focus = self.overlay_focus_states.get(&target_hwnd.0).copied();
             if last_focus == Some(is_focused) {
@@ -664,7 +775,8 @@ where
             }
 
             self.overlay_focus_states.insert(target_hwnd.0, is_focused);
-            let rect = get_window_rect_helper(target_hwnd).unwrap_or(crate::hud_layout::Rect::new(0, 0, 800, 600));
+            let rect = get_window_rect_helper(target_hwnd)
+                .unwrap_or(crate::hud_layout::Rect::new(0, 0, 800, 600));
             self.update_pinned_overlay_graphics(target_hwnd, overlay, rect, Some(new_fg_hwnd))?;
         }
         Ok(())
@@ -685,30 +797,49 @@ where
 
         let is_focused = if let Some(fg) = new_fg_hwnd {
             let class_name = get_window_class_name(fg);
-            if class_name == "ForegroundStaging" || class_name == "XamlExplorerHostIslandWindow" || class_name == "MultitaskingViewFrame" {
-                self.overlay_focus_states.get(&target_hwnd.0).copied().unwrap_or(false)
+            if class_name == "ForegroundStaging"
+                || class_name == "XamlExplorerHostIslandWindow"
+                || class_name == "MultitaskingViewFrame"
+            {
+                self.overlay_focus_states
+                    .get(&target_hwnd.0)
+                    .copied()
+                    .unwrap_or(false)
             } else {
                 let root_fg = get_root_window(fg);
                 root_fg == target_hwnd || fg == overlay_hwnd || root_fg == overlay_hwnd
             }
         } else {
-            self.overlay_focus_states.get(&target_hwnd.0).copied().unwrap_or_else(|| {
-                self.window_manager.get_active_window()
-                    .map(|act| {
-                        let class_name = get_window_class_name(act);
-                        if class_name == "ForegroundStaging" || class_name == "XamlExplorerHostIslandWindow" || class_name == "MultitaskingViewFrame" {
-                            false
-                        } else {
-                            let root_act = get_root_window(act);
-                            root_act == target_hwnd || act == overlay_hwnd || root_act == overlay_hwnd
-                        }
-                    })
-                    .unwrap_or(false)
-            })
+            self.overlay_focus_states
+                .get(&target_hwnd.0)
+                .copied()
+                .unwrap_or_else(|| {
+                    self.window_manager
+                        .get_active_window()
+                        .map(|act| {
+                            let class_name = get_window_class_name(act);
+                            if class_name == "ForegroundStaging"
+                                || class_name == "XamlExplorerHostIslandWindow"
+                                || class_name == "MultitaskingViewFrame"
+                            {
+                                false
+                            } else {
+                                let root_act = get_root_window(act);
+                                root_act == target_hwnd
+                                    || act == overlay_hwnd
+                                    || root_act == overlay_hwnd
+                            }
+                        })
+                        .unwrap_or(false)
+                })
         };
 
-        println!("[Win-Float] [Debug] update_graphics: target = 0x{:X}, is_focused = {}, cache_focus = {:?}",
-            target_hwnd.0, is_focused, self.overlay_focus_states.get(&target_hwnd.0));
+        println!(
+            "[Win-Float] [Debug] update_graphics: target = 0x{:X}, is_focused = {}, cache_focus = {:?}",
+            target_hwnd.0,
+            is_focused,
+            self.overlay_focus_states.get(&target_hwnd.0)
+        );
 
         self.overlay_focus_states.insert(target_hwnd.0, is_focused);
 
@@ -737,10 +868,20 @@ where
         if px >= 0 && py >= 0 {
             let mut pin_canvas = crate::ui::overlay::Canvas::new(pin_w as u32, pin_h as u32)?;
             crate::ui::draw::draw_pin(&mut pin_canvas, accent_color)?;
-            crate::ui::draw::blit_pixmap(canvas.pixmap_mut(), pin_canvas.pixmap(), px as u32, py as u32);
+            crate::ui::draw::blit_pixmap(
+                canvas.pixmap_mut(),
+                pin_canvas.pixmap(),
+                px as u32,
+                py as u32,
+            );
         }
 
-        self.overlay_manager.update_overlay(overlay_hwnd, canvas.pixels(), width as u32, height as u32)?;
+        self.overlay_manager.update_overlay(
+            overlay_hwnd,
+            canvas.pixels(),
+            width as u32,
+            height as u32,
+        )?;
         Ok(())
     }
 }
@@ -754,7 +895,11 @@ where
 {
     fn drop(&mut self) {
         // Restore all window styles/alpha gracefully
-        for (&hwnd_val, &(was_layered, original_alpha, original_cr_key, original_flags, original_style)) in &self.original_window_states {
+        for (
+            &hwnd_val,
+            &(was_layered, original_alpha, original_cr_key, original_flags, original_style),
+        ) in &self.original_window_states
+        {
             let hwnd = HWND(hwnd_val);
             let _ = self.window_manager.restore_window_style_info(
                 hwnd,
@@ -770,12 +915,18 @@ where
         for &hwnd_val in self.pinned_overlays.keys() {
             let hwnd = HWND(hwnd_val);
             if let Err(e) = self.window_manager.set_always_on_top(hwnd, false) {
-                println!("[Win-Float] [Error] Failed to reset always-on-top status for window HWND 0x{:X} during shutdown: {}", hwnd_val, e);
+                println!(
+                    "[Win-Float] [Error] Failed to reset always-on-top status for window HWND 0x{:X} during shutdown: {}",
+                    hwnd_val, e
+                );
             } else {
-                println!("[Win-Float] [Info] Reset always-on-top status for window HWND 0x{:X} during shutdown.", hwnd_val);
+                println!(
+                    "[Win-Float] [Info] Reset always-on-top status for window HWND 0x{:X} during shutdown.",
+                    hwnd_val
+                );
             }
         }
-        
+
         // Explicitly close stdin to notify watchdog we're exiting gracefully
         self.watchdog_stdin.take();
     }
@@ -784,7 +935,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::traits::{MockWindowManager, MockOverlayManager, MockEventTracker};
+    use crate::traits::{MockEventTracker, MockOverlayManager, MockWindowManager};
 
     struct MockInputHook;
     impl InputHook for MockInputHook {
@@ -801,7 +952,7 @@ mod tests {
         let om = MockOverlayManager::default();
         let tracker = MockEventTracker::default();
         let controller = AppController::new(wm, hook, om, tracker).unwrap();
-        
+
         assert!(controller.hud_overlay.is_none());
         assert!(controller.modal_target.is_none());
     }
@@ -812,16 +963,19 @@ mod tests {
         let hook = MockInputHook;
         let om = MockOverlayManager::default();
         let tracker = MockEventTracker::default();
-        
+
         let mut controller = AppController::new(wm, hook, om, tracker).unwrap();
-        
+
         let target = HWND(12345);
         *controller.window_manager.active_window.lock().unwrap() = target;
 
         controller.handle_hotkey(HOTKEY_TOPMOST_ID).unwrap();
-        assert_eq!(*controller.window_manager.always_on_top.lock().unwrap(), Some((target, true)));
+        assert_eq!(
+            *controller.window_manager.always_on_top.lock().unwrap(),
+            Some((target, true))
+        );
         assert_eq!(controller.pinned_overlays.len(), 1);
-        
+
         {
             let overlays = controller.overlay_manager.overlays.lock().unwrap();
             assert_eq!(overlays.len(), 1);
@@ -829,7 +983,7 @@ mod tests {
             assert_eq!(oy, -8, "overlay y should start at top - 8");
             assert_eq!(oh, 608, "overlay height should be rect.height() + 8");
         }
-        
+
         controller.handle_hotkey(HOTKEY_TOPMOST_ID).unwrap();
         assert_eq!(controller.pinned_overlays.len(), 0);
     }
@@ -840,7 +994,7 @@ mod tests {
         let hook = MockInputHook;
         let om = MockOverlayManager::default();
         let tracker = MockEventTracker::default();
-        
+
         let mut controller = AppController::new(wm, hook, om, tracker).unwrap();
         let target = HWND(12345);
         *controller.window_manager.active_window.lock().unwrap() = target;
@@ -876,7 +1030,7 @@ mod tests {
         let hook = MockInputHook;
         let om = MockOverlayManager::default();
         let tracker = MockEventTracker::default();
-        
+
         let mut controller = AppController::new(wm, hook, om, tracker).unwrap();
         let target = HWND(12345);
         *controller.window_manager.active_window.lock().unwrap() = target;
@@ -891,7 +1045,8 @@ mod tests {
         controller.pressed_keys.insert(0x25); // VK_LEFT
 
         // Simulate a physics tick with dt = 0.1s
-        controller.last_physics_update = Some(std::time::Instant::now() - std::time::Duration::from_millis(100));
+        controller.last_physics_update =
+            Some(std::time::Instant::now() - std::time::Duration::from_millis(100));
         controller.handle_timer_tick().unwrap();
 
         // Velocity should be negative (moving towards lower percentage)
@@ -906,7 +1061,7 @@ mod tests {
         let hook = MockInputHook;
         let om = MockOverlayManager::default();
         let tracker = MockEventTracker::default();
-        
+
         let mut controller = AppController::new(wm, hook, om, tracker).unwrap();
         let target = HWND(12345);
         *controller.window_manager.active_window.lock().unwrap() = target;
@@ -919,7 +1074,8 @@ mod tests {
         controller.pressed_keys.clear(); // no thrust
 
         // Simulate a physics tick with dt = 0.5s (long enough for high friction to decay)
-        controller.last_physics_update = Some(std::time::Instant::now() - std::time::Duration::from_millis(500));
+        controller.last_physics_update =
+            Some(std::time::Instant::now() - std::time::Duration::from_millis(500));
         controller.handle_timer_tick().unwrap();
 
         // High friction should have decayed velocity significantly
@@ -944,8 +1100,10 @@ mod tests {
         controller.handle_hotkey(HOTKEY_MODAL_ID).unwrap();
 
         // slider_percentage must be seeded at 75, not 100
-        assert_eq!(controller.slider_percentage as u8, 75,
-            "slider should start at the window's existing transparency (75%), not 100%");
+        assert_eq!(
+            controller.slider_percentage as u8, 75,
+            "slider should start at the window's existing transparency (75%), not 100%"
+        );
     }
 
     #[test]
@@ -984,9 +1142,14 @@ mod tests {
             assert_eq!(h, overlay_hwnd);
             sum
         };
-        
+
         // Unfocused should have less colored pixels than focused because the outline is removed
-        assert!(last_sum_focused > last_sum_unfocused, "Focused sum: {}, Unfocused sum: {}", last_sum_focused, last_sum_unfocused);
+        assert!(
+            last_sum_focused > last_sum_unfocused,
+            "Focused sum: {}, Unfocused sum: {}",
+            last_sum_focused,
+            last_sum_unfocused
+        );
     }
 
     #[test]
@@ -1002,21 +1165,33 @@ mod tests {
 
         // Pin the window
         controller.handle_hotkey(HOTKEY_TOPMOST_ID).unwrap();
-        
-        let pixels_opt = controller.overlay_manager.last_pixels.lock().unwrap().clone();
+
+        let pixels_opt = controller
+            .overlay_manager
+            .last_pixels
+            .lock()
+            .unwrap()
+            .clone();
         assert!(pixels_opt.is_some());
         let pixels = pixels_opt.unwrap();
-        
+
         let width = 800;
-        
+
         // Assert alpha channel (75% opacity = 191) at a pixel fully inside the stroke
         let idx = (1 * width + 400) * 4 + 3;
         let alpha = pixels[idx];
-        assert_eq!(alpha, 191, "Expected border alpha to be 191 (75% opacity), got {}", alpha);
+        assert_eq!(
+            alpha, 191,
+            "Expected border alpha to be 191 (75% opacity), got {}",
+            alpha
+        );
 
         // Assert thickness: at y = 2, with 3.0 thickness, it should still be colored
         let idx_y2 = (2 * width + 400) * 4 + 3;
-        assert!(pixels[idx_y2] > 0, "Expected pixel at y=2 to be colored for 3.0px thickness");
+        assert!(
+            pixels[idx_y2] > 0,
+            "Expected pixel at y=2 to be colored for 3.0px thickness"
+        );
     }
 
     #[test]
@@ -1037,7 +1212,7 @@ mod tests {
 
         // Pin the window
         controller.handle_hotkey(HOTKEY_TOPMOST_ID).unwrap();
-        
+
         {
             let overlays = controller.overlay_manager.overlays.lock().unwrap();
             assert_eq!(overlays.len(), 1);
@@ -1057,8 +1232,15 @@ mod tests {
         }
         controller.handle_window_moved(target).unwrap();
 
-        assert!(controller.overlay_manager.last_pixels.lock().unwrap().is_none(),
-            "Overlay should not redraw when size is unchanged!");
+        assert!(
+            controller
+                .overlay_manager
+                .last_pixels
+                .lock()
+                .unwrap()
+                .is_none(),
+            "Overlay should not redraw when size is unchanged!"
+        );
 
         // 2. Change size
         {
@@ -1066,8 +1248,15 @@ mod tests {
         }
         controller.handle_window_moved(target).unwrap();
 
-        assert!(controller.overlay_manager.last_pixels.lock().unwrap().is_some(),
-            "Overlay should redraw when size changes!");
+        assert!(
+            controller
+                .overlay_manager
+                .last_pixels
+                .lock()
+                .unwrap()
+                .is_some(),
+            "Overlay should redraw when size changes!"
+        );
 
         // Cleanup
         *TEST_RECT.lock().unwrap() = None;
@@ -1078,7 +1267,7 @@ mod tests {
         let wm = MockWindowManager::default();
         let target_a = HWND(1111);
         let target_b = HWND(2222);
-        
+
         *wm.active_window.lock().unwrap() = target_a;
 
         let hook = MockInputHook;
@@ -1088,7 +1277,7 @@ mod tests {
 
         // Pin target_a
         controller.handle_hotkey(HOTKEY_TOPMOST_ID).unwrap();
-        
+
         // Change active to target_b and pin it
         *controller.window_manager.active_window.lock().unwrap() = target_b;
         controller.handle_hotkey(HOTKEY_TOPMOST_ID).unwrap();
@@ -1099,16 +1288,34 @@ mod tests {
 
         // Move focus to a different window (HWND(999))
         // target_a remains unfocused -> should NOT redraw
-        controller.handle_focus_changed(target_a, HWND(999)).unwrap();
-        
-        assert!(controller.overlay_manager.last_pixels.lock().unwrap().is_none(),
-            "Overlay A should not redraw when remaining unfocused");
+        controller
+            .handle_focus_changed(target_a, HWND(999))
+            .unwrap();
+
+        assert!(
+            controller
+                .overlay_manager
+                .last_pixels
+                .lock()
+                .unwrap()
+                .is_none(),
+            "Overlay A should not redraw when remaining unfocused"
+        );
 
         // target_b changes from focused to unfocused -> should redraw
-        controller.handle_focus_changed(target_b, HWND(999)).unwrap();
+        controller
+            .handle_focus_changed(target_b, HWND(999))
+            .unwrap();
 
-        assert!(controller.overlay_manager.last_pixels.lock().unwrap().is_some(),
-            "Overlay B should redraw when focus state changes");
+        assert!(
+            controller
+                .overlay_manager
+                .last_pixels
+                .lock()
+                .unwrap()
+                .is_some(),
+            "Overlay B should redraw when focus state changes"
+        );
     }
 
     #[test]
@@ -1124,9 +1331,9 @@ mod tests {
 
         // Pin the window (gets focused initially)
         controller.handle_hotkey(HOTKEY_TOPMOST_ID).unwrap();
-        
+
         let overlay_hwnd = controller.pinned_overlays.get(&target.0).copied().unwrap();
-        
+
         // Assert initial cached focus state is true (since target was active)
         assert_eq!(controller.overlay_focus_states.get(&target.0), Some(&true));
 
@@ -1139,15 +1346,26 @@ mod tests {
         // Trigger graphics update with None (no fg hwnd provided).
         // Since focus state is cached as true, it must use the cache and draw the focus outline (meaning last_pixels sum matches focused overlay)
         let rect = crate::hud_layout::Rect::new(0, 0, 800, 600);
-        controller.update_pinned_overlay_graphics(target, overlay_hwnd, rect, None).unwrap();
+        controller
+            .update_pinned_overlay_graphics(target, overlay_hwnd, rect, None)
+            .unwrap();
 
-        let pixels = controller.overlay_manager.last_pixels.lock().unwrap().clone().unwrap();
+        let pixels = controller
+            .overlay_manager
+            .last_pixels
+            .lock()
+            .unwrap()
+            .clone()
+            .unwrap();
         let width = 800;
-        
+
         // Check that the outline border is indeed drawn (alpha at y=1 should be 191)
         let idx = (1 * width + 400) * 4 + 3;
         let alpha = pixels[idx];
-        assert_eq!(alpha, 191, "Expected outline border to be drawn using cached focus state");
+        assert_eq!(
+            alpha, 191,
+            "Expected outline border to be drawn using cached focus state"
+        );
     }
 
     #[test]
@@ -1155,7 +1373,7 @@ mod tests {
         let wm = MockWindowManager::default();
         let target = HWND(12345);
         let child = HWND(98765);
-        
+
         *wm.active_window.lock().unwrap() = target;
 
         let hook = MockInputHook;
@@ -1186,10 +1404,17 @@ mod tests {
 
         // Assert focus cache became true
         assert_eq!(controller.overlay_focus_states.get(&target.0), Some(&true));
-        
+
         // Assert B did redraw
-        assert!(controller.overlay_manager.last_pixels.lock().unwrap().is_some(),
-            "Overlay should redraw when child window gains focus");
+        assert!(
+            controller
+                .overlay_manager
+                .last_pixels
+                .lock()
+                .unwrap()
+                .is_some(),
+            "Overlay should redraw when child window gains focus"
+        );
 
         // Clean up
         *TEST_ROOT_ANCESTORS.lock().unwrap() = None;
@@ -1200,7 +1425,7 @@ mod tests {
         let wm = MockWindowManager::default();
         let target = HWND(12345);
         let popup = HWND(77777);
-        
+
         *wm.active_window.lock().unwrap() = target;
 
         let hook = MockInputHook;
@@ -1231,10 +1456,17 @@ mod tests {
 
         // Assert focus cache became true
         assert_eq!(controller.overlay_focus_states.get(&target.0), Some(&true));
-        
+
         // Assert B did redraw
-        assert!(controller.overlay_manager.last_pixels.lock().unwrap().is_some(),
-            "Overlay should redraw when owned popup window gains focus");
+        assert!(
+            controller
+                .overlay_manager
+                .last_pixels
+                .lock()
+                .unwrap()
+                .is_some(),
+            "Overlay should redraw when owned popup window gains focus"
+        );
 
         // Clean up
         *TEST_OWNERS.lock().unwrap() = None;
@@ -1272,20 +1504,40 @@ mod tests {
         *controller.overlay_manager.last_pixels.lock().unwrap() = None;
 
         // 1. Move focus to ForegroundStaging. It should be ignored, and focus state should remain true!
-        controller.handle_focus_changed(target, transient_staging).unwrap();
+        controller
+            .handle_focus_changed(target, transient_staging)
+            .unwrap();
         assert_eq!(controller.overlay_focus_states.get(&target.0), Some(&true));
-        assert!(controller.overlay_manager.last_pixels.lock().unwrap().is_none(),
-            "Overlay should not redraw when transient window gets focus");
+        assert!(
+            controller
+                .overlay_manager
+                .last_pixels
+                .lock()
+                .unwrap()
+                .is_none(),
+            "Overlay should not redraw when transient window gets focus"
+        );
 
         // 2. Move focus to XamlExplorerHostIslandWindow. It should be ignored, and focus state should remain true!
-        controller.handle_focus_changed(target, transient_switcher).unwrap();
+        controller
+            .handle_focus_changed(target, transient_switcher)
+            .unwrap();
         assert_eq!(controller.overlay_focus_states.get(&target.0), Some(&true));
 
         // 3. Move focus to a normal window. It should NOT be ignored, and focus state should become false!
-        controller.handle_focus_changed(target, normal_window).unwrap();
+        controller
+            .handle_focus_changed(target, normal_window)
+            .unwrap();
         assert_eq!(controller.overlay_focus_states.get(&target.0), Some(&false));
-        assert!(controller.overlay_manager.last_pixels.lock().unwrap().is_some(),
-            "Overlay should redraw when normal window gets focus");
+        assert!(
+            controller
+                .overlay_manager
+                .last_pixels
+                .lock()
+                .unwrap()
+                .is_some(),
+            "Overlay should redraw when normal window gets focus"
+        );
 
         // Clean up
         *TEST_CLASS_NAMES.lock().unwrap() = None;
@@ -1305,7 +1557,10 @@ mod tests {
                 Ok(self.active_window)
             }
             fn set_always_on_top(&self, hwnd: HWND, enabled: bool) -> Result<(), String> {
-                self.always_on_top_calls.lock().unwrap().push((hwnd, enabled));
+                self.always_on_top_calls
+                    .lock()
+                    .unwrap()
+                    .push((hwnd, enabled));
                 Ok(())
             }
             fn set_transparency(&self, _hwnd: HWND, _alpha: u8) -> Result<(), String> {
@@ -1314,10 +1569,21 @@ mod tests {
             fn is_always_on_top(&self, _hwnd: HWND) -> Result<bool, String> {
                 Ok(false)
             }
-            fn get_window_style_info(&self, _hwnd: HWND) -> Result<(bool, u8, u32, u32, i32), String> {
+            fn get_window_style_info(
+                &self,
+                _hwnd: HWND,
+            ) -> Result<(bool, u8, u32, u32, i32), String> {
                 Ok((false, 255, 0, 0, 0))
             }
-            fn restore_window_style_info(&self, _hwnd: HWND, _was_layered: bool, _alpha: u8, _cr_key: u32, _flags: u32, _style: i32) -> Result<(), String> {
+            fn restore_window_style_info(
+                &self,
+                _hwnd: HWND,
+                _was_layered: bool,
+                _alpha: u8,
+                _cr_key: u32,
+                _flags: u32,
+                _style: i32,
+            ) -> Result<(), String> {
                 Ok(())
             }
             fn is_taskbar_or_start_menu(&self, _hwnd: HWND) -> Result<bool, String> {
@@ -1340,7 +1606,7 @@ mod tests {
 
             // Pin the window. This will call set_always_on_top(target, true).
             controller.handle_hotkey(HOTKEY_TOPMOST_ID).unwrap();
-            
+
             // Check that it registered a pin call
             let current_calls = calls.lock().unwrap().clone();
             assert!(current_calls.contains(&(target, true)));
@@ -1361,23 +1627,44 @@ mod tests {
         let hook = MockInputHook;
         let om = MockOverlayManager::default();
         let tracker = MockEventTracker::default();
-        
+
         let mut controller = AppController::new(wm, hook, om, tracker).unwrap();
-        
+
         let target = HWND(999);
         // Mark target as taskbar/startmenu
-        controller.window_manager.taskbar_or_start_menu.lock().unwrap().insert(target.0);
+        controller
+            .window_manager
+            .taskbar_or_start_menu
+            .lock()
+            .unwrap()
+            .insert(target.0);
         *controller.window_manager.active_window.lock().unwrap() = target;
 
         // Try to toggle topmost. It should be ignored.
         controller.handle_hotkey(HOTKEY_TOPMOST_ID).unwrap();
-        assert!(controller.pinned_overlays.is_empty(), "Taskbar/Start Menu should not be pinned");
-        assert!(controller.window_manager.always_on_top.lock().unwrap().is_none(), "Taskbar/Start Menu always-on-top should not be set");
+        assert!(
+            controller.pinned_overlays.is_empty(),
+            "Taskbar/Start Menu should not be pinned"
+        );
+        assert!(
+            controller
+                .window_manager
+                .always_on_top
+                .lock()
+                .unwrap()
+                .is_none(),
+            "Taskbar/Start Menu always-on-top should not be set"
+        );
 
         // Try to enter transparency modal. It should be ignored.
         controller.handle_hotkey(HOTKEY_MODAL_ID).unwrap();
-        assert!(controller.hud_overlay.is_none(), "Transparency modal HUD overlay should not be created for Taskbar/Start Menu");
-        assert!(controller.modal_target.is_none(), "Transparency modal target should not be set for Taskbar/Start Menu");
+        assert!(
+            controller.hud_overlay.is_none(),
+            "Transparency modal HUD overlay should not be created for Taskbar/Start Menu"
+        );
+        assert!(
+            controller.modal_target.is_none(),
+            "Transparency modal target should not be set for Taskbar/Start Menu"
+        );
     }
 }
-

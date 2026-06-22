@@ -8,7 +8,12 @@ pub struct Rect {
 
 impl Rect {
     pub fn new(left: i32, top: i32, right: i32, bottom: i32) -> Self {
-        Self { left, top, right, bottom }
+        Self {
+            left,
+            top,
+            right,
+            bottom,
+        }
     }
 
     pub fn width(&self) -> i32 {
@@ -34,11 +39,7 @@ pub fn calculate_pin_position(
 }
 
 /// Calculates the (x, y) coordinates to center the HUD overlay within the target window.
-pub fn calculate_hud_position(
-    target: Rect,
-    hud_width: i32,
-    hud_height: i32,
-) -> (i32, i32) {
+pub fn calculate_hud_position(target: Rect, hud_width: i32, hud_height: i32) -> (i32, i32) {
     let x = target.left + (target.width() - hud_width) / 2;
     let y = target.top + (target.height() - hud_height) / 2;
     (x, y)
@@ -57,7 +58,7 @@ mod tests {
         let margin_y = 10;
 
         let expected_x = 500 - 24 - 10; // 466
-        let expected_y = 100 + 10;      // 110
+        let expected_y = 100 + 10; // 110
 
         assert_eq!(
             calculate_pin_position(target, pin_width, pin_height, margin_x, margin_y),
@@ -72,7 +73,7 @@ mod tests {
         let hud_height = 80;
 
         let expected_x = 100 + (400 - 200) / 2; // 200
-        let expected_y = 100 + (300 - 80) / 2;  // 210
+        let expected_y = 100 + (300 - 80) / 2; // 210
 
         assert_eq!(
             calculate_hud_position(target, hud_width, hud_height),

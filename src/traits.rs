@@ -1,5 +1,7 @@
-use windows::Win32::Foundation::HWND;
+#![allow(clippy::type_complexity, clippy::collapsible_if)]
+
 use std::sync::Mutex;
+use windows::Win32::Foundation::HWND;
 
 pub trait WindowManager {
     fn get_active_window(&self) -> Result<HWND, String>;
@@ -7,7 +9,15 @@ pub trait WindowManager {
     fn set_transparency(&self, hwnd: HWND, alpha: u8) -> Result<(), String>;
     fn is_always_on_top(&self, hwnd: HWND) -> Result<bool, String>;
     fn get_window_style_info(&self, hwnd: HWND) -> Result<(bool, u8, u32, u32, i32), String>;
-    fn restore_window_style_info(&self, hwnd: HWND, was_layered: bool, alpha: u8, cr_key: u32, flags: u32, style: i32) -> Result<(), String>;
+    fn restore_window_style_info(
+        &self,
+        hwnd: HWND,
+        was_layered: bool,
+        alpha: u8,
+        cr_key: u32,
+        flags: u32,
+        style: i32,
+    ) -> Result<(), String>;
     fn is_taskbar_or_start_menu(&self, hwnd: HWND) -> Result<bool, String>;
 }
 
@@ -17,8 +27,21 @@ pub trait InputHook {
 }
 
 pub trait OverlayManager {
-    fn create_overlay(&self, parent: HWND, x: i32, y: i32, width: i32, height: i32) -> Result<HWND, String>;
-    fn update_overlay(&self, hwnd: HWND, pixels: &[u8], width: u32, height: u32) -> Result<(), String>;
+    fn create_overlay(
+        &self,
+        parent: HWND,
+        x: i32,
+        y: i32,
+        width: i32,
+        height: i32,
+    ) -> Result<HWND, String>;
+    fn update_overlay(
+        &self,
+        hwnd: HWND,
+        pixels: &[u8],
+        width: u32,
+        height: u32,
+    ) -> Result<(), String>;
     fn destroy_overlay(&self, hwnd: HWND);
 }
 
@@ -79,7 +102,15 @@ impl WindowManager for MockWindowManager {
         Ok(*self.preset_style_info.lock().unwrap())
     }
 
-    fn restore_window_style_info(&self, _hwnd: HWND, _was_layered: bool, _alpha: u8, _cr_key: u32, _flags: u32, _style: i32) -> Result<(), String> {
+    fn restore_window_style_info(
+        &self,
+        _hwnd: HWND,
+        _was_layered: bool,
+        _alpha: u8,
+        _cr_key: u32,
+        _flags: u32,
+        _style: i32,
+    ) -> Result<(), String> {
         Ok(())
     }
 
@@ -107,13 +138,29 @@ impl Default for MockOverlayManager {
 }
 
 impl OverlayManager for MockOverlayManager {
-    fn create_overlay(&self, _parent: HWND, x: i32, y: i32, width: i32, height: i32) -> Result<HWND, String> {
+    fn create_overlay(
+        &self,
+        _parent: HWND,
+        x: i32,
+        y: i32,
+        width: i32,
+        height: i32,
+    ) -> Result<HWND, String> {
         let fake_hwnd = HWND(1000 + self.overlays.lock().unwrap().len() as isize);
-        self.overlays.lock().unwrap().push((fake_hwnd, x, y, width, height));
+        self.overlays
+            .lock()
+            .unwrap()
+            .push((fake_hwnd, x, y, width, height));
         Ok(fake_hwnd)
     }
 
-    fn update_overlay(&self, hwnd: HWND, pixels: &[u8], _width: u32, _height: u32) -> Result<(), String> {
+    fn update_overlay(
+        &self,
+        hwnd: HWND,
+        pixels: &[u8],
+        _width: u32,
+        _height: u32,
+    ) -> Result<(), String> {
         *self.last_updated.lock().unwrap() = Some((hwnd, pixels.len()));
         let sum: usize = pixels.iter().map(|&b| b as usize).sum();
         *self.last_pixel_sum.lock().unwrap() = Some((hwnd, sum));
@@ -122,7 +169,10 @@ impl OverlayManager for MockOverlayManager {
     }
 
     fn destroy_overlay(&self, hwnd: HWND) {
-        self.overlays.lock().unwrap().retain(|&(h, _, _, _, _)| h != hwnd);
+        self.overlays
+            .lock()
+            .unwrap()
+            .retain(|&(h, _, _, _, _)| h != hwnd);
     }
 }
 
@@ -140,16 +190,26 @@ impl Default for MockEventTracker {
 
 impl EventTracker for MockEventTracker {
     fn start_tracking(&self, target_hwnd: HWND, overlay_hwnd: HWND) -> Result<(), String> {
-        self.tracked.lock().unwrap().push((target_hwnd, overlay_hwnd));
+        self.tracked
+            .lock()
+            .unwrap()
+            .push((target_hwnd, overlay_hwnd));
         Ok(())
     }
 
     fn stop_tracking(&self, target_hwnd: HWND) {
-        self.tracked.lock().unwrap().retain(|&(t, _)| t != target_hwnd);
+        self.tracked
+            .lock()
+            .unwrap()
+            .retain(|&(t, _)| t != target_hwnd);
     }
 
     fn is_tracking(&self, target_hwnd: HWND) -> bool {
-        self.tracked.lock().unwrap().iter().any(|&(t, _)| t == target_hwnd)
+        self.tracked
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|&(t, _)| t == target_hwnd)
     }
 }
 
@@ -161,10 +221,10 @@ mod tests {
     fn test_mock_window_manager_records_calls() {
         let mock = MockWindowManager::default();
         let hwnd = HWND(12345);
-        
+
         mock.set_always_on_top(hwnd, true).unwrap();
         mock.set_transparency(hwnd, 128).unwrap();
-        
+
         assert_eq!(*mock.always_on_top.lock().unwrap(), Some((hwnd, true)));
         assert_eq!(*mock.transparency.lock().unwrap(), Some((hwnd, 128)));
     }

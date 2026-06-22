@@ -1,21 +1,21 @@
-use crate::traits::{WindowManager, OverlayManager};
-use windows::core::w;
-use windows::Win32::Foundation::{COLORREF, HWND, POINT, SIZE, HINSTANCE, LRESULT, WPARAM, LPARAM};
-use windows::Win32::UI::WindowsAndMessaging::{
-    GetForegroundWindow, IsWindow, SetWindowPos, HWND_TOPMOST, HWND_NOTOPMOST,
-    SWP_NOMOVE, SWP_NOSIZE, GWL_EXSTYLE, WS_EX_LAYERED, WS_EX_TOPMOST, LWA_ALPHA,
-    GetWindowLongW, SetWindowLongW, SetLayeredWindowAttributes,
-    CreateWindowExW, DestroyWindow, UpdateLayeredWindow, RegisterClassExW,
-    DefWindowProcW, WNDCLASSEXW, CS_HREDRAW, CS_VREDRAW, WS_EX_TRANSPARENT,
-    WS_EX_NOACTIVATE, WS_POPUP, ULW_ALPHA, HMENU, GetLayeredWindowAttributes,
-    SWP_NOZORDER, SWP_FRAMECHANGED, SWP_NOACTIVATE, WM_MOUSEACTIVATE,
+#![allow(clippy::collapsible_if)]
+
+use crate::traits::{OverlayManager, WindowManager};
+use windows::Win32::Foundation::{COLORREF, HINSTANCE, HWND, LPARAM, LRESULT, POINT, SIZE, WPARAM};
+use windows::Win32::Graphics::Gdi::{
+    AC_SRC_ALPHA, AC_SRC_OVER, BITMAPINFO, BITMAPINFOHEADER, BLENDFUNCTION, CreateCompatibleDC,
+    CreateDIBSection, DIB_RGB_COLORS, DeleteDC, DeleteObject, GetDC, ReleaseDC, SelectObject,
 };
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
-use windows::Win32::Graphics::Gdi::{
-    GetDC, ReleaseDC, CreateCompatibleDC, CreateDIBSection, SelectObject,
-    DeleteObject, DeleteDC, BITMAPINFO, BITMAPINFOHEADER, DIB_RGB_COLORS,
-    AC_SRC_OVER, AC_SRC_ALPHA, BLENDFUNCTION,
+use windows::Win32::UI::WindowsAndMessaging::{
+    CS_HREDRAW, CS_VREDRAW, CreateWindowExW, DefWindowProcW, DestroyWindow, GWL_EXSTYLE,
+    GetForegroundWindow, GetLayeredWindowAttributes, GetWindowLongW, HMENU, HWND_NOTOPMOST,
+    HWND_TOPMOST, IsWindow, LWA_ALPHA, RegisterClassExW, SWP_FRAMECHANGED, SWP_NOACTIVATE,
+    SWP_NOMOVE, SWP_NOSIZE, SWP_NOZORDER, SetLayeredWindowAttributes, SetWindowLongW, SetWindowPos,
+    ULW_ALPHA, UpdateLayeredWindow, WM_MOUSEACTIVATE, WNDCLASSEXW, WS_EX_LAYERED, WS_EX_NOACTIVATE,
+    WS_EX_TOPMOST, WS_EX_TRANSPARENT, WS_POPUP,
 };
+use windows::core::w;
 
 unsafe extern "system" fn overlay_wnd_proc(
     hwnd: HWND,
@@ -56,11 +56,7 @@ fn register_overlay_class() -> Result<(), String> {
             err = Some("RegisterClassExW failed".to_string());
         }
     });
-    if let Some(e) = err {
-        Err(e)
-    } else {
-        Ok(())
-    }
+    if let Some(e) = err { Err(e) } else { Ok(()) }
 }
 
 pub struct LiveWindowManager;
@@ -78,19 +74,13 @@ impl WindowManager for LiveWindowManager {
         if hwnd.0 == 0 || unsafe { !IsWindow(hwnd).as_bool() } {
             return Err("Invalid window handle".to_string());
         }
-        
-        let target = if enabled { HWND_TOPMOST } else { HWND_NOTOPMOST };
-        let res = unsafe {
-            SetWindowPos(
-                hwnd,
-                target,
-                0,
-                0,
-                0,
-                0,
-                SWP_NOMOVE | SWP_NOSIZE,
-            )
+
+        let target = if enabled {
+            HWND_TOPMOST
+        } else {
+            HWND_NOTOPMOST
         };
+        let res = unsafe { SetWindowPos(hwnd, target, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE) };
         if res.is_err() {
             return Err(format!("SetWindowPos failed: {:?}", res));
         }
@@ -116,7 +106,7 @@ impl WindowManager for LiveWindowManager {
             // Retrieve last error if needed, but since it could be 0 legitimately or on error,
             // we can try to proceed or verify. For simplicity we check if setting style fails.
         }
-        
+
         // Add WS_EX_LAYERED style
         let new_style = ex_style | WS_EX_LAYERED.0 as i32;
         let res_style = unsafe { SetWindowLongW(hwnd, GWL_EXSTYLE, new_style) };
@@ -125,11 +115,12 @@ impl WindowManager for LiveWindowManager {
         }
 
         // Set the layered window attributes
-        let res_alpha = unsafe {
-            SetLayeredWindowAttributes(hwnd, COLORREF(0), alpha, LWA_ALPHA)
-        };
+        let res_alpha = unsafe { SetLayeredWindowAttributes(hwnd, COLORREF(0), alpha, LWA_ALPHA) };
         if res_alpha.is_err() {
-            return Err(format!("SetLayeredWindowAttributes failed: {:?}", res_alpha));
+            return Err(format!(
+                "SetLayeredWindowAttributes failed: {:?}",
+                res_alpha
+            ));
         }
 
         Ok(())
@@ -144,15 +135,29 @@ impl WindowManager for LiveWindowManager {
             let was_layered = (style & WS_EX_LAYERED.0 as i32) != 0;
             let mut alpha = 255u8;
             let mut key = COLORREF(0);
-            let mut flags = windows::Win32::UI::WindowsAndMessaging::LAYERED_WINDOW_ATTRIBUTES_FLAGS(0);
+            let mut flags =
+                windows::Win32::UI::WindowsAndMessaging::LAYERED_WINDOW_ATTRIBUTES_FLAGS(0);
             if was_layered {
-                let _ = GetLayeredWindowAttributes(hwnd, Some(&mut key), Some(&mut alpha), Some(&mut flags));
+                let _ = GetLayeredWindowAttributes(
+                    hwnd,
+                    Some(&mut key),
+                    Some(&mut alpha),
+                    Some(&mut flags),
+                );
             }
             Ok((was_layered, alpha, key.0, flags.0, style))
         }
     }
 
-    fn restore_window_style_info(&self, hwnd: HWND, was_layered: bool, alpha: u8, cr_key: u32, flags: u32, style: i32) -> Result<(), String> {
+    fn restore_window_style_info(
+        &self,
+        hwnd: HWND,
+        was_layered: bool,
+        alpha: u8,
+        cr_key: u32,
+        flags: u32,
+        style: i32,
+    ) -> Result<(), String> {
         if hwnd.0 == 0 || unsafe { !IsWindow(hwnd).as_bool() } {
             return Err("Invalid window handle".to_string());
         }
@@ -208,15 +213,20 @@ impl WindowManager for LiveWindowManager {
             };
 
             // Get process name
-            use windows::Win32::System::Threading::{OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION, QueryFullProcessImageNameW, PROCESS_NAME_WIN32};
-            use windows::Win32::UI::WindowsAndMessaging::GetWindowThreadProcessId;
             use windows::Win32::Foundation::CloseHandle;
+            use windows::Win32::System::Threading::{
+                OpenProcess, PROCESS_NAME_WIN32, PROCESS_QUERY_LIMITED_INFORMATION,
+                QueryFullProcessImageNameW,
+            };
+            use windows::Win32::UI::WindowsAndMessaging::GetWindowThreadProcessId;
 
             let mut pid = 0u32;
             let _thread_id = unsafe { GetWindowThreadProcessId(target, Some(&mut pid)) };
             let mut filename = String::new();
             if pid != 0 {
-                if let Ok(handle) = unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid) } {
+                if let Ok(handle) =
+                    unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid) }
+                {
                     let mut path_buf = [0u16; 1024];
                     let mut size = path_buf.len() as u32;
                     let res = unsafe {
@@ -247,8 +257,10 @@ impl WindowManager for LiveWindowManager {
                 || lower_filename == "searchhost.exe"
                 || lower_filename == "shellexperiencehost.exe"
             {
-                println!("[Win-Float] [Warning] Rejected operation on system window HWND 0x{:X} (Class: \"{}\", Process: \"{}\", Root HWND: 0x{:X}). Taskbar and Start Menu are excluded.", 
-                    hwnd.0, class_name, filename, root_hwnd.0);
+                println!(
+                    "[Win-Float] [Warning] Rejected operation on system window HWND 0x{:X} (Class: \"{}\", Process: \"{}\", Root HWND: 0x{:X}). Taskbar and Start Menu are excluded.",
+                    hwnd.0, class_name, filename, root_hwnd.0
+                );
                 return Ok(true);
             }
 
@@ -268,18 +280,21 @@ impl WindowManager for LiveWindowManager {
                 || class_name == "Progman"
                 || class_name == "WorkerW"
             {
-                println!("[Win-Float] [Warning] Rejected operation on system window HWND 0x{:X} (Class: \"{}\", Process: \"{}\", Root HWND: 0x{:X}). Taskbar and Start Menu are excluded.", 
-                    hwnd.0, class_name, filename, root_hwnd.0);
+                println!(
+                    "[Win-Float] [Warning] Rejected operation on system window HWND 0x{:X} (Class: \"{}\", Process: \"{}\", Root HWND: 0x{:X}). Taskbar and Start Menu are excluded.",
+                    hwnd.0, class_name, filename, root_hwnd.0
+                );
                 return Ok(true);
             }
 
             // 3. explorer.exe modern UI components (Volume flyouts, Network popups, Notifications, etc.)
-            if lower_filename == "explorer.exe" && (
-                class_name == "Windows.UI.Core.CoreWindow"
-                || class_name == "NativeHWNDHost"
-            ) {
-                println!("[Win-Float] [Warning] Rejected operation on system window HWND 0x{:X} (Class: \"{}\", Process: \"{}\", Root HWND: 0x{:X}). Taskbar and Start Menu are excluded.", 
-                    hwnd.0, class_name, filename, root_hwnd.0);
+            if lower_filename == "explorer.exe"
+                && (class_name == "Windows.UI.Core.CoreWindow" || class_name == "NativeHWNDHost")
+            {
+                println!(
+                    "[Win-Float] [Warning] Rejected operation on system window HWND 0x{:X} (Class: \"{}\", Process: \"{}\", Root HWND: 0x{:X}). Taskbar and Start Menu are excluded.",
+                    hwnd.0, class_name, filename, root_hwnd.0
+                );
                 return Ok(true);
             }
         }
@@ -289,7 +304,7 @@ impl WindowManager for LiveWindowManager {
 }
 
 fn get_root_window(mut hwnd: HWND) -> HWND {
-    use windows::Win32::UI::WindowsAndMessaging::{GetAncestor, GetWindow, GA_ROOTOWNER, GW_OWNER};
+    use windows::Win32::UI::WindowsAndMessaging::{GA_ROOTOWNER, GW_OWNER, GetAncestor, GetWindow};
     if hwnd.0 == 0 {
         return hwnd;
     }
@@ -313,7 +328,14 @@ fn get_root_window(mut hwnd: HWND) -> HWND {
 pub struct LiveOverlayManager;
 
 impl OverlayManager for LiveOverlayManager {
-    fn create_overlay(&self, parent: HWND, x: i32, y: i32, width: i32, height: i32) -> Result<HWND, String> {
+    fn create_overlay(
+        &self,
+        parent: HWND,
+        x: i32,
+        y: i32,
+        width: i32,
+        height: i32,
+    ) -> Result<HWND, String> {
         register_overlay_class()?;
 
         let hinstance = unsafe { GetModuleHandleW(None) }
@@ -342,14 +364,20 @@ impl OverlayManager for LiveOverlayManager {
 
         // Show window but without activating it
         unsafe {
-            use windows::Win32::UI::WindowsAndMessaging::{ShowWindow, SW_SHOWNOACTIVATE};
+            use windows::Win32::UI::WindowsAndMessaging::{SW_SHOWNOACTIVATE, ShowWindow};
             let _ = ShowWindow(hwnd, SW_SHOWNOACTIVATE);
         }
 
         Ok(hwnd)
     }
 
-    fn update_overlay(&self, hwnd: HWND, pixels: &[u8], width: u32, height: u32) -> Result<(), String> {
+    fn update_overlay(
+        &self,
+        hwnd: HWND,
+        pixels: &[u8],
+        width: u32,
+        height: u32,
+    ) -> Result<(), String> {
         if hwnd.0 == 0 {
             return Err("Invalid window handle".to_string());
         }
@@ -415,16 +443,19 @@ impl OverlayManager for LiveOverlayManager {
             let bits_slice = std::slice::from_raw_parts_mut(bits_ptr as *mut u8, total_pixels * 4);
             for i in 0..total_pixels {
                 let src_idx = i * 4;
-                bits_slice[src_idx] = pixels[src_idx + 2];     // B
+                bits_slice[src_idx] = pixels[src_idx + 2]; // B
                 bits_slice[src_idx + 1] = pixels[src_idx + 1]; // G
-                bits_slice[src_idx + 2] = pixels[src_idx];     // R
+                bits_slice[src_idx + 2] = pixels[src_idx]; // R
                 bits_slice[src_idx + 3] = pixels[src_idx + 3]; // A
             }
 
             let old_bitmap = SelectObject(mem_dc, bitmap);
 
             let src_point = POINT { x: 0, y: 0 };
-            let size = SIZE { cx: width as i32, cy: height as i32 };
+            let size = SIZE {
+                cx: width as i32,
+                cy: height as i32,
+            };
             let blend = BLENDFUNCTION {
                 BlendOp: AC_SRC_OVER as u8,
                 BlendFlags: 0,
@@ -475,7 +506,7 @@ mod tests {
     #[test]
     fn test_live_window_manager_rejects_null_hwnd() {
         let wm = LiveWindowManager;
-        
+
         // A null HWND should be rejected as invalid
         assert!(wm.set_always_on_top(HWND(0), true).is_err());
         assert!(wm.set_transparency(HWND(0), 128).is_err());
@@ -484,7 +515,7 @@ mod tests {
     #[test]
     fn test_live_window_manager_rejects_fake_hwnd() {
         let wm = LiveWindowManager;
-        
+
         // A fake HWND that does not map to a real window should be rejected
         assert!(wm.set_always_on_top(HWND(999999), true).is_err());
         assert!(wm.set_transparency(HWND(999999), 128).is_err());
@@ -521,7 +552,7 @@ mod tests {
 
     #[test]
     fn test_live_window_manager_is_taskbar_or_start_menu() {
-        use windows::Win32::UI::WindowsAndMessaging::{FindWindowW, FindWindowExW};
+        use windows::Win32::UI::WindowsAndMessaging::{FindWindowExW, FindWindowW};
         use windows::core::w;
 
         let wm = LiveWindowManager;
@@ -530,13 +561,21 @@ mod tests {
         let taskbar_hwnd = unsafe { FindWindowW(w!("Shell_TrayWnd"), None) };
         if taskbar_hwnd.0 != 0 {
             let res = wm.is_taskbar_or_start_menu(taskbar_hwnd);
-            assert_eq!(res, Ok(true), "Shell_TrayWnd should be identified as taskbar");
+            assert_eq!(
+                res,
+                Ok(true),
+                "Shell_TrayWnd should be identified as taskbar"
+            );
 
             // Find a child of the taskbar (e.g. system tray, start button, clock, etc.)
             let child_hwnd = unsafe { FindWindowExW(taskbar_hwnd, HWND(0), None, None) };
             if child_hwnd.0 != 0 {
                 let res_child = wm.is_taskbar_or_start_menu(child_hwnd);
-                assert_eq!(res_child, Ok(true), "Child of Shell_TrayWnd should be identified as taskbar/startmenu");
+                assert_eq!(
+                    res_child,
+                    Ok(true),
+                    "Child of Shell_TrayWnd should be identified as taskbar/startmenu"
+                );
             }
         }
 
@@ -544,7 +583,11 @@ mod tests {
         let om = LiveOverlayManager;
         let overlay = om.create_overlay(HWND(0), 10, 10, 100, 100).unwrap();
         let res = wm.is_taskbar_or_start_menu(overlay);
-        assert_eq!(res, Ok(false), "A normal overlay window should not be identified as taskbar/startmenu");
+        assert_eq!(
+            res,
+            Ok(false),
+            "A normal overlay window should not be identified as taskbar/startmenu"
+        );
         om.destroy_overlay(overlay);
     }
 }

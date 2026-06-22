@@ -9,8 +9,8 @@ impl Canvas {
         if width == 0 || height == 0 {
             return Err("Canvas dimensions must be greater than zero".to_string());
         }
-        let pixmap = Pixmap::new(width, height)
-            .ok_or_else(|| "Failed to allocate Pixmap".to_string())?;
+        let pixmap =
+            Pixmap::new(width, height).ok_or_else(|| "Failed to allocate Pixmap".to_string())?;
         Ok(Self { pixmap })
     }
 
@@ -66,7 +66,7 @@ mod tests {
         let mut canvas = Canvas::new(10, 10).unwrap();
         let color = Color::from_rgba8(255, 0, 0, 255); // Red
         canvas.clear(color);
-        
+
         let pixels = canvas.pixels();
         assert_eq!(pixels.len(), 10 * 10 * 4);
         for chunk in pixels.chunks_exact(4) {

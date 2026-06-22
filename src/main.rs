@@ -1,31 +1,31 @@
-
+pub mod app;
+pub mod hud_layout;
+pub mod platform;
+pub mod state_machine;
 pub mod traits;
 pub mod transparency_calc;
-pub mod hud_layout;
-pub mod state_machine;
 pub mod ui;
-pub mod platform;
-pub mod app;
 
-use platform::window::{LiveWindowManager, LiveOverlayManager};
-use platform::hook::LiveInputHook;
-use app::tracker::WindowEventTracker;
 use app::controller::AppController;
+use app::tracker::WindowEventTracker;
+use platform::hook::LiveInputHook;
+use platform::window::{LiveOverlayManager, LiveWindowManager};
 
-use windows::core::w;
-use windows::Win32::Foundation::{HWND, HINSTANCE, LRESULT, WPARAM, LPARAM, BOOL, FALSE, TRUE, COLORREF};
-use windows::Win32::UI::WindowsAndMessaging::{
-    RegisterClassExW, CreateWindowExW, DefWindowProcW, WNDCLASSEXW, CS_HREDRAW, CS_VREDRAW,
-    HWND_MESSAGE, WS_POPUP, HMENU, PostThreadMessageW, WM_QUIT,
-    IsWindow, GetWindowLongW, SetWindowLongW, SetLayeredWindowAttributes, GWL_EXSTYLE,
-    WS_EX_LAYERED, SetWindowPos, SWP_NOMOVE, SWP_NOSIZE, SWP_NOZORDER,
-    SWP_FRAMECHANGED, SWP_NOACTIVATE, HWND_NOTOPMOST,
-};
-use windows::Win32::System::LibraryLoader::GetModuleHandleW;
-use windows::Win32::System::Console::{SetConsoleCtrlHandler, CTRL_C_EVENT};
-use windows::Win32::System::Threading::GetCurrentThreadId;
-use std::io::BufRead;
 use std::collections::{HashMap, HashSet};
+use std::io::BufRead;
+use windows::Win32::Foundation::{
+    BOOL, COLORREF, FALSE, HINSTANCE, HWND, LPARAM, LRESULT, TRUE, WPARAM,
+};
+use windows::Win32::System::Console::{CTRL_C_EVENT, SetConsoleCtrlHandler};
+use windows::Win32::System::LibraryLoader::GetModuleHandleW;
+use windows::Win32::System::Threading::GetCurrentThreadId;
+use windows::Win32::UI::WindowsAndMessaging::{
+    CS_HREDRAW, CS_VREDRAW, CreateWindowExW, DefWindowProcW, GWL_EXSTYLE, GetWindowLongW, HMENU,
+    HWND_MESSAGE, HWND_NOTOPMOST, IsWindow, PostThreadMessageW, RegisterClassExW, SWP_FRAMECHANGED,
+    SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SWP_NOZORDER, SetLayeredWindowAttributes,
+    SetWindowLongW, SetWindowPos, WM_QUIT, WNDCLASSEXW, WS_EX_LAYERED, WS_POPUP,
+};
+use windows::core::w;
 
 static mut MAIN_THREAD_ID: u32 = 0;
 
@@ -34,14 +34,7 @@ unsafe extern "system" fn ctrl_handler(ctrl_type: u32) -> BOOL {
         println!("[Win-Float] [Info] Received Ctrl+C event. Initiating graceful shutdown...");
         let thread_id = unsafe { MAIN_THREAD_ID };
         if thread_id != 0 {
-            let _ = unsafe {
-                PostThreadMessageW(
-                    thread_id,
-                    WM_QUIT,
-                    WPARAM(0),
-                    LPARAM(0),
-                )
-            };
+            let _ = unsafe { PostThreadMessageW(thread_id, WM_QUIT, WPARAM(0), LPARAM(0)) };
         }
         return TRUE;
     }
@@ -59,8 +52,8 @@ unsafe extern "system" fn message_wnd_proc(
 
 fn create_message_window() -> Result<HWND, String> {
     unsafe {
-        let hinstance = GetModuleHandleW(None)
-            .map_err(|e| format!("GetModuleHandleW failed: {:?}", e))?;
+        let hinstance =
+            GetModuleHandleW(None).map_err(|e| format!("GetModuleHandleW failed: {:?}", e))?;
 
         let class_name = w!("WinFloatMessageClass");
 
@@ -133,13 +126,16 @@ fn parse_watchdog_commands<R: BufRead>(
                     parts[5].parse::<u32>(),
                     parts[6].parse::<i32>(),
                 ) {
-                    map.insert(hwnd, RestoreState {
-                        was_layered,
-                        original_alpha: alpha,
-                        original_cr_key: cr_key,
-                        original_flags: flags,
-                        original_style: style,
-                    });
+                    map.insert(
+                        hwnd,
+                        RestoreState {
+                            was_layered,
+                            original_alpha: alpha,
+                            original_cr_key: cr_key,
+                            original_flags: flags,
+                            original_style: style,
+                        },
+                    );
                 }
             }
             "REMOVE" if parts.len() >= 2 => {
@@ -167,7 +163,10 @@ fn parse_watchdog_commands<R: BufRead>(
 }
 
 fn run_watchdog(parent_pid: u32) {
-    println!("[Win-Float] [Info] Watchdog started for parent PID {}.", parent_pid);
+    println!(
+        "[Win-Float] [Info] Watchdog started for parent PID {}.",
+        parent_pid
+    );
     let stdin = std::io::stdin();
     let mut map = HashMap::<isize, RestoreState>::new();
     let mut pinned = HashSet::<isize>::new();
@@ -184,7 +183,9 @@ fn run_watchdog(parent_pid: u32) {
                         hwnd,
                         COLORREF(state.original_cr_key),
                         state.original_alpha,
-                        windows::Win32::UI::WindowsAndMessaging::LAYERED_WINDOW_ATTRIBUTES_FLAGS(state.original_flags),
+                        windows::Win32::UI::WindowsAndMessaging::LAYERED_WINDOW_ATTRIBUTES_FLAGS(
+                            state.original_flags,
+                        ),
                     );
                     let _ = SetWindowLongW(hwnd, GWL_EXSTYLE, state.original_style);
                 } else {
@@ -210,15 +211,7 @@ fn run_watchdog(parent_pid: u32) {
         let hwnd = HWND(hwnd_val);
         unsafe {
             if IsWindow(hwnd).as_bool() {
-                let _ = SetWindowPos(
-                    hwnd,
-                    HWND_NOTOPMOST,
-                    0,
-                    0,
-                    0,
-                    0,
-                    SWP_NOMOVE | SWP_NOSIZE,
-                );
+                let _ = SetWindowPos(hwnd, HWND_NOTOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
             }
         }
     }
@@ -257,7 +250,8 @@ mod tests {
 
     #[test]
     fn test_watchdog_parser_pin_unpin() {
-        let input = "PIN 0x1A2B\nADD 0x3C4D false 255 0 0 1234\nPIN 0x5E6F\nUNPIN 0x1A2B\nREMOVE 0x3C4D\n";
+        let input =
+            "PIN 0x1A2B\nADD 0x3C4D false 255 0 0 1234\nPIN 0x5E6F\nUNPIN 0x1A2B\nREMOVE 0x3C4D\n";
         let mut map = HashMap::new();
         let mut pinned = HashSet::new();
         parse_watchdog_commands(input.as_bytes(), &mut map, &mut pinned);

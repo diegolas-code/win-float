@@ -1,12 +1,12 @@
+use crate::traits::InputHook;
 use std::sync::Mutex;
 use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, WPARAM};
-use windows::Win32::UI::WindowsAndMessaging::{
-    CallNextHookEx, SetWindowsHookExW, UnhookWindowsHookEx, HHOOK, WH_KEYBOARD_LL,
-    WM_KEYDOWN, WM_SYSKEYDOWN, WM_KEYUP, WM_SYSKEYUP, KBDLLHOOKSTRUCT, PostMessageW,
-};
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
+use windows::Win32::UI::WindowsAndMessaging::{
+    CallNextHookEx, HHOOK, KBDLLHOOKSTRUCT, PostMessageW, SetWindowsHookExW, UnhookWindowsHookEx,
+    WH_KEYBOARD_LL, WM_KEYDOWN, WM_KEYUP, WM_SYSKEYDOWN, WM_SYSKEYUP,
+};
 use windows::core::PCWSTR;
-use crate::traits::InputHook;
 
 pub const WM_TACTILE_KEY_EVENT: u32 = 0x8000; // WM_APP
 
@@ -49,12 +49,9 @@ impl InputHook for LiveInputHook {
             let hinstance = GetModuleHandleW(PCWSTR::null())
                 .map_err(|e| format!("GetModuleHandleW failed: {:?}", e))?;
 
-            let hook_handle = SetWindowsHookExW(
-                WH_KEYBOARD_LL,
-                Some(keyboard_hook_proc),
-                hinstance,
-                0,
-            ).map_err(|e| format!("SetWindowsHookExW failed: {:?}", e))?;
+            let hook_handle =
+                SetWindowsHookExW(WH_KEYBOARD_LL, Some(keyboard_hook_proc), hinstance, 0)
+                    .map_err(|e| format!("SetWindowsHookExW failed: {:?}", e))?;
 
             *hook_guard = Some(hook_handle);
         }
@@ -123,7 +120,7 @@ mod tests {
     #[test]
     fn test_hook_lifecycle_states() {
         let hook = LiveInputHook::new(HWND(12345));
-        
+
         // Starts inactive
         assert!(!hook.is_hook_active());
 

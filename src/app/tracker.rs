@@ -1,12 +1,10 @@
 use std::collections::HashMap;
 use std::sync::Mutex;
 use windows::Win32::Foundation::{HWND, LPARAM, WPARAM};
-use windows::Win32::UI::Accessibility::{
-    SetWinEventHook, UnhookWinEvent, HWINEVENTHOOK,
-};
+use windows::Win32::UI::Accessibility::{HWINEVENTHOOK, SetWinEventHook, UnhookWinEvent};
 use windows::Win32::UI::WindowsAndMessaging::{
-    EVENT_OBJECT_DESTROY, EVENT_OBJECT_LOCATIONCHANGE, PostMessageW, WINEVENT_OUTOFCONTEXT,
-    OBJID_WINDOW, EVENT_SYSTEM_FOREGROUND,
+    EVENT_OBJECT_DESTROY, EVENT_OBJECT_LOCATIONCHANGE, EVENT_SYSTEM_FOREGROUND, OBJID_WINDOW,
+    PostMessageW, WINEVENT_OUTOFCONTEXT,
 };
 
 pub const WM_TACTILE_WINDOW_MOVED: u32 = 0x8001;
@@ -18,6 +16,12 @@ static TRACKED_WINDOWS: Mutex<Option<HashMap<isize, HWND>>> = Mutex::new(None);
 pub struct WindowEventTracker {
     hook: Mutex<Option<HWINEVENTHOOK>>,
     fg_hook: Mutex<Option<HWINEVENTHOOK>>,
+}
+
+impl Default for WindowEventTracker {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl WindowEventTracker {
@@ -82,7 +86,9 @@ impl crate::traits::EventTracker for WindowEventTracker {
             };
             if fg_hook_handle.0 == 0 {
                 if let Some(h) = hook_guard.take() {
-                    unsafe { let _ = UnhookWinEvent(h); }
+                    unsafe {
+                        let _ = UnhookWinEvent(h);
+                    }
                 }
                 return Err("SetWinEventHook for foreground failed".to_string());
             }
@@ -96,7 +102,7 @@ impl crate::traits::EventTracker for WindowEventTracker {
         let mut map_guard = TRACKED_WINDOWS.lock().unwrap();
         if let Some(ref mut map) = *map_guard {
             map.remove(&target_hwnd.0);
-            
+
             if map.is_empty() {
                 let mut hook_guard = self.hook.lock().unwrap();
                 if let Some(hook_handle) = hook_guard.take() {
@@ -154,7 +160,10 @@ unsafe extern "system" fn win_event_proc(
 ) {
     if event == EVENT_SYSTEM_FOREGROUND {
         if hwnd.0 != 0 {
-            println!("[Win-Float] [Debug] win_event_proc EVENT_SYSTEM_FOREGROUND: hwnd = 0x{:X}", hwnd.0);
+            println!(
+                "[Win-Float] [Debug] win_event_proc EVENT_SYSTEM_FOREGROUND: hwnd = 0x{:X}",
+                hwnd.0
+            );
             let map_guard = match TRACKED_WINDOWS.lock() {
                 Ok(guard) => guard,
                 Err(_) => return,
@@ -166,7 +175,7 @@ unsafe extern "system" fn win_event_proc(
                             overlay,
                             WM_TACTILE_FOCUS_CHANGED,
                             WPARAM(target_hwnd_val as usize),
-                            LPARAM(hwnd.0 as isize),
+                            LPARAM(hwnd.0),
                         )
                     };
                 }
