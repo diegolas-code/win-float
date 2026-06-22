@@ -105,6 +105,7 @@ cargo test
 
 * **Safety Hook Proc:** The low-level keyboard hook proc resolves keyboard captures using `CallNextHookEx` to ensure key event chains are never dropped system-wide.
 * **Crash-Resilient Watchdog:** To ensure user windows are not left permanently transparent or locked if the app crashes, the binary launches a background watchdog process. In the event of a main process crash, the watchdog intercepts the state, recovers the target windows, and restores their original styling.
+* **State Reset on Termination:** Pinned always-on-top states and transparency adjustments are automatically reverted back to their original styles and layers when the application is terminated, closed, or exited (either gracefully or recovered via the watchdog).
 * **Graceful Exit:** Responds to Ctrl+C or Console Exit events by safely routing thread notifications, tearing down hook handlers, and cleaning up window style modifications immediately.
 
 ---
