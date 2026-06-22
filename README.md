@@ -1,8 +1,8 @@
 # Win-Float
 
-`win-float` is a lightweight, high-performance workspace utility for Windows written in Rust. It allows you to toggle "Always-On-Top" states and adjust transparency for any window using global hotkeys. The app draws click-through overlays using 2D vector graphics (`tiny-skia`) for real-time visual HUD feedback.
+`win-float` is a lightweight workspace utility for Windows written in Rust. It allows you to toggle "Always-On-Top" states and adjust transparency for any window using global hotkeys. The app draws click-through overlays using 2D vector graphics (`tiny-skia`) for real-time visual HUD feedback.
 
-This is mostly a learning project to explore Windows APIs and Rust desktop utility development.
+**This is mostly a learning project to explore Windows APIs and Rust desktop utility development.**
 
 ---
 
@@ -11,13 +11,7 @@ This is mostly a learning project to explore Windows APIs and Rust desktop utili
 ### 1. Always-On-Top Toggle (`Ctrl + Win + F11`)
 * Toggles the topmost state of the active foreground window.
 * Draws a transparent, click-through pin overlay in the top-right corner of the target window.
-* **Passive Window Tracking:** Real-time event tracking updates the pin overlay's position as the target window is dragged, resized, or minimized.
-* **Focused Accent Outline:** When a pinned always-on-top window is focused, a 3px outline matching the Windows system accent color (at 75% opacity) is drawn around it to indicate its focus state. The outline automatically disappears when it loses focus.
-* **Border Offset Matching:** Overlay layout coordinates are padded by 7px at the top (`y = rect.top - 7` and `height = rect.height() + 7`) to float symmetrically over the invisible window resizing borders on Windows 10 & 11.
-* **Maximized & Move/Resize Hiding:**
-  - When the target window is maximized, the outline overlay is completely hidden to avoid drawing over the taskbar or screen edges.
-  - During manual window dragging/resizing modal loops, the overlay is hidden and automatically reappears when the movement concludes.
-  - **Aero Snap Debouncing:** Location changes from system Aero Snapping (e.g. `Win + Arrow keys`) are debounced by 150ms using Win32 event timers on the overlay window handles, immediately hiding the overlay and revealing it only after the window settles at its final destination.
+* **Focused Accent Outline:** When a pinned always-on-top window is focused, an outline matching the Windows system accent color is drawn around it to indicate its focus state. The outline automatically disappears when it loses focus.
 
 ### 2. Transparency Adjustment Modal (`Shift + Win + F11`)
 * Enters a dedicated block-input state targeting the active foreground window.
@@ -77,6 +71,7 @@ win-float/
 │   │   ├── draw.rs         # 2D HUD widget and pin renderer
 │   │   └── overlay.rs      # Overlay canvas pixels buffer wrapper
 │   └── main.rs             # Daemon entry point and lifecycle watchdog
+├── .history/               # Development logs
 ├── TODO.md                 # Roadmap checklist
 ├── SPEC.md                 # Technical design specification
 ├── IDEA.md                 # Original application concept
