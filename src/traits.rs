@@ -8,6 +8,7 @@ pub trait WindowManager {
     fn is_always_on_top(&self, hwnd: HWND) -> Result<bool, String>;
     fn get_window_style_info(&self, hwnd: HWND) -> Result<(bool, u8, u32, u32, i32), String>;
     fn restore_window_style_info(&self, hwnd: HWND, was_layered: bool, alpha: u8, cr_key: u32, flags: u32, style: i32) -> Result<(), String>;
+    fn is_taskbar_or_start_menu(&self, hwnd: HWND) -> Result<bool, String>;
 }
 
 pub trait InputHook {
@@ -34,6 +35,7 @@ pub struct MockWindowManager {
     /// Pre-set style info returned by get_window_style_info.
     /// Tuple: (was_layered, alpha, cr_key, flags, style)
     pub preset_style_info: Mutex<(bool, u8, u32, u32, i32)>,
+    pub taskbar_or_start_menu: Mutex<std::collections::HashSet<isize>>,
 }
 
 impl Default for MockWindowManager {
@@ -43,6 +45,7 @@ impl Default for MockWindowManager {
             always_on_top: Mutex::new(None),
             transparency: Mutex::new(None),
             preset_style_info: Mutex::new((false, 255, 0, 0, 0)),
+            taskbar_or_start_menu: Mutex::new(std::collections::HashSet::new()),
         }
     }
 }
@@ -78,6 +81,10 @@ impl WindowManager for MockWindowManager {
 
     fn restore_window_style_info(&self, _hwnd: HWND, _was_layered: bool, _alpha: u8, _cr_key: u32, _flags: u32, _style: i32) -> Result<(), String> {
         Ok(())
+    }
+
+    fn is_taskbar_or_start_menu(&self, hwnd: HWND) -> Result<bool, String> {
+        Ok(self.taskbar_or_start_menu.lock().unwrap().contains(&hwnd.0))
     }
 }
 

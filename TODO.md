@@ -90,4 +90,8 @@ Follow the TDD cycle strictly: write failing test -> verify -> write minimal imp
   - Reset always-on-top status during AppController drop.
   - Send PIN/UNPIN commands to watchdog to ensure robust cleanup during abrupt crashes/terminations.
   - Verify with unit tests.
+- [x] **Task 23: Exclude Taskbar and Start Menu from window targeting**
+  - Implement `is_taskbar_or_start_menu` method in `WindowManager` trait and mock it in tests.
+  - Implement process name and class name checks in `LiveWindowManager`.
+  - Verify with mock unit tests and live Win32 unit tests.
 

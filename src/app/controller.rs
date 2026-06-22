@@ -270,7 +270,10 @@ where
             HOTKEY_TOPMOST_ID => {
                 println!("[Win-Float] [Info] Hotkey triggered: Toggle Pin");
                 let active = self.window_manager.get_active_window()?;
-                if active.0 == 0 {
+                if active.0 == 0 || self.window_manager.is_taskbar_or_start_menu(active)? {
+                    if active.0 != 0 {
+                        println!("[Win-Float] [Info] Ignoring pin hotkey because target window is Taskbar or Start Menu.");
+                    }
                     return Ok(());
                 }
 
@@ -316,7 +319,10 @@ where
                 }
 
                 let active = self.window_manager.get_active_window()?;
-                if active.0 == 0 {
+                if active.0 == 0 || self.window_manager.is_taskbar_or_start_menu(active)? {
+                    if active.0 != 0 {
+                        println!("[Win-Float] [Info] Ignoring transparency hotkey because target window is Taskbar or Start Menu.");
+                    }
                     return Ok(());
                 }
 
@@ -1314,6 +1320,9 @@ mod tests {
             fn restore_window_style_info(&self, _hwnd: HWND, _was_layered: bool, _alpha: u8, _cr_key: u32, _flags: u32, _style: i32) -> Result<(), String> {
                 Ok(())
             }
+            fn is_taskbar_or_start_menu(&self, _hwnd: HWND) -> Result<bool, String> {
+                Ok(false)
+            }
         }
 
         let calls = Arc::new(Mutex::new(Vec::new()));
@@ -1344,6 +1353,31 @@ mod tests {
             "Expected target window HWND(12302) always-on-top status to be reset on controller drop. Actual calls: {:?}",
             final_calls
         );
+    }
+
+    #[test]
+    fn test_controller_ignores_taskbar_and_start_menu() {
+        let wm = MockWindowManager::default();
+        let hook = MockInputHook;
+        let om = MockOverlayManager::default();
+        let tracker = MockEventTracker::default();
+        
+        let mut controller = AppController::new(wm, hook, om, tracker).unwrap();
+        
+        let target = HWND(999);
+        // Mark target as taskbar/startmenu
+        controller.window_manager.taskbar_or_start_menu.lock().unwrap().insert(target.0);
+        *controller.window_manager.active_window.lock().unwrap() = target;
+
+        // Try to toggle topmost. It should be ignored.
+        controller.handle_hotkey(HOTKEY_TOPMOST_ID).unwrap();
+        assert!(controller.pinned_overlays.is_empty(), "Taskbar/Start Menu should not be pinned");
+        assert!(controller.window_manager.always_on_top.lock().unwrap().is_none(), "Taskbar/Start Menu always-on-top should not be set");
+
+        // Try to enter transparency modal. It should be ignored.
+        controller.handle_hotkey(HOTKEY_MODAL_ID).unwrap();
+        assert!(controller.hud_overlay.is_none(), "Transparency modal HUD overlay should not be created for Taskbar/Start Menu");
+        assert!(controller.modal_target.is_none(), "Transparency modal target should not be set for Taskbar/Start Menu");
     }
 }
 

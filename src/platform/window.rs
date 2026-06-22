@@ -182,6 +182,132 @@ impl WindowManager for LiveWindowManager {
         }
         Ok(())
     }
+
+    fn is_taskbar_or_start_menu(&self, hwnd: HWND) -> Result<bool, String> {
+        if hwnd.0 == 0 || unsafe { !IsWindow(hwnd).as_bool() } {
+            return Ok(false);
+        }
+
+        // We check both the active window handle itself and its root owner window.
+        let root_hwnd = get_root_window(hwnd);
+
+        for target in [hwnd, root_hwnd] {
+            if target.0 == 0 || unsafe { !IsWindow(target).as_bool() } {
+                continue;
+            }
+
+            // Get class name
+            let mut class_buf = [0u16; 256];
+            let class_len = unsafe {
+                windows::Win32::UI::WindowsAndMessaging::GetClassNameW(target, &mut class_buf)
+            };
+            let class_name = if class_len > 0 {
+                String::from_utf16_lossy(&class_buf[..class_len as usize])
+            } else {
+                String::new()
+            };
+
+            // Get process name
+            use windows::Win32::System::Threading::{OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION, QueryFullProcessImageNameW, PROCESS_NAME_WIN32};
+            use windows::Win32::UI::WindowsAndMessaging::GetWindowThreadProcessId;
+            use windows::Win32::Foundation::CloseHandle;
+
+            let mut pid = 0u32;
+            let _thread_id = unsafe { GetWindowThreadProcessId(target, Some(&mut pid)) };
+            let mut filename = String::new();
+            if pid != 0 {
+                if let Ok(handle) = unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid) } {
+                    let mut path_buf = [0u16; 1024];
+                    let mut size = path_buf.len() as u32;
+                    let res = unsafe {
+                        QueryFullProcessImageNameW(
+                            handle,
+                            PROCESS_NAME_WIN32,
+                            windows::core::PWSTR(path_buf.as_mut_ptr()),
+                            &mut size,
+                        )
+                    };
+                    unsafe {
+                        let _ = CloseHandle(handle);
+                    }
+                    if res.is_ok() {
+                        let path = String::from_utf16_lossy(&path_buf[..size as usize]);
+                        filename = std::path::Path::new(&path)
+                            .file_name()
+                            .map(|f| f.to_string_lossy().to_string())
+                            .unwrap_or_default();
+                    }
+                }
+            }
+
+            let lower_filename = filename.to_lowercase();
+
+            // 1. Direct process match (Start Menu, Search, Action Center host components)
+            if lower_filename == "startmenuexperiencehost.exe"
+                || lower_filename == "searchhost.exe"
+                || lower_filename == "shellexperiencehost.exe"
+            {
+                println!("[Win-Float] [Warning] Rejected operation on system window HWND 0x{:X} (Class: \"{}\", Process: \"{}\", Root HWND: 0x{:X}). Taskbar and Start Menu are excluded.", 
+                    hwnd.0, class_name, filename, root_hwnd.0);
+                return Ok(true);
+            }
+
+            // 2. Direct class name match (Taskbar, tray widgets, classic start menus, desktop)
+            if class_name == "Shell_TrayWnd"
+                || class_name == "Shell_SecondaryTrayWnd"
+                || class_name == "TrayNotifyWnd"
+                || class_name == "NotifyIconOverflowWindow"
+                || class_name == "TrayClockWClass"
+                || class_name == "ClockFlyoutWindow"
+                || class_name == "ControlCenterWindow"
+                || class_name == "Shell_LightDismissOverlay"
+                || class_name == "ClassicShell.CMenuContainer"
+                || class_name == "OpenShell.CMenuContainer"
+                || class_name == "DV2ControlHost"
+                || class_name == "XamlExplorerHostIslandWindow"
+                || class_name == "Progman"
+                || class_name == "WorkerW"
+            {
+                println!("[Win-Float] [Warning] Rejected operation on system window HWND 0x{:X} (Class: \"{}\", Process: \"{}\", Root HWND: 0x{:X}). Taskbar and Start Menu are excluded.", 
+                    hwnd.0, class_name, filename, root_hwnd.0);
+                return Ok(true);
+            }
+
+            // 3. explorer.exe modern UI components (Volume flyouts, Network popups, Notifications, etc.)
+            if lower_filename == "explorer.exe" && (
+                class_name == "Windows.UI.Core.CoreWindow"
+                || class_name == "NativeHWNDHost"
+            ) {
+                println!("[Win-Float] [Warning] Rejected operation on system window HWND 0x{:X} (Class: \"{}\", Process: \"{}\", Root HWND: 0x{:X}). Taskbar and Start Menu are excluded.", 
+                    hwnd.0, class_name, filename, root_hwnd.0);
+                return Ok(true);
+            }
+        }
+
+        Ok(false)
+    }
+}
+
+fn get_root_window(mut hwnd: HWND) -> HWND {
+    use windows::Win32::UI::WindowsAndMessaging::{GetAncestor, GetWindow, GA_ROOTOWNER, GW_OWNER};
+    if hwnd.0 == 0 {
+        return hwnd;
+    }
+    unsafe {
+        loop {
+            let root = GetAncestor(hwnd, GA_ROOTOWNER);
+            if root.0 == 0 || root == hwnd {
+                let owner = GetWindow(hwnd, GW_OWNER);
+                if owner.0 == 0 {
+                    break;
+                }
+                hwnd = owner;
+            } else {
+                hwnd = root;
+            }
+        }
+        hwnd
+    }
 }
 
 pub struct LiveOverlayManager;
@@ -391,5 +517,34 @@ mod tests {
         assert!(res.is_ok());
 
         om.destroy_overlay(hwnd);
+    }
+
+    #[test]
+    fn test_live_window_manager_is_taskbar_or_start_menu() {
+        use windows::Win32::UI::WindowsAndMessaging::{FindWindowW, FindWindowExW};
+        use windows::core::w;
+
+        let wm = LiveWindowManager;
+
+        // Find the real Windows Taskbar
+        let taskbar_hwnd = unsafe { FindWindowW(w!("Shell_TrayWnd"), None) };
+        if taskbar_hwnd.0 != 0 {
+            let res = wm.is_taskbar_or_start_menu(taskbar_hwnd);
+            assert_eq!(res, Ok(true), "Shell_TrayWnd should be identified as taskbar");
+
+            // Find a child of the taskbar (e.g. system tray, start button, clock, etc.)
+            let child_hwnd = unsafe { FindWindowExW(taskbar_hwnd, HWND(0), None, None) };
+            if child_hwnd.0 != 0 {
+                let res_child = wm.is_taskbar_or_start_menu(child_hwnd);
+                assert_eq!(res_child, Ok(true), "Child of Shell_TrayWnd should be identified as taskbar/startmenu");
+            }
+        }
+
+        // Test with a dummy window handle (e.g. a real overlay)
+        let om = LiveOverlayManager;
+        let overlay = om.create_overlay(HWND(0), 10, 10, 100, 100).unwrap();
+        let res = wm.is_taskbar_or_start_menu(overlay);
+        assert_eq!(res, Ok(false), "A normal overlay window should not be identified as taskbar/startmenu");
+        om.destroy_overlay(overlay);
     }
 }
