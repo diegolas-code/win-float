@@ -289,12 +289,22 @@ where
                     self.event_tracker.start_tracking(active, overlay)?;
                     self.pinned_overlays.insert(active.0, overlay);
                     self.overlay_rects.insert(active.0, rect);
+                    if let Some(ref mut stdin) = self.watchdog_stdin {
+                        use std::io::Write;
+                        let _ = writeln!(stdin, "PIN 0x{:X}", active.0);
+                        let _ = stdin.flush();
+                    }
                     println!("[Win-Float] [Info] Pinned window HWND 0x{:X}. Created overlay HWND 0x{:X} spanning the entire window.", active.0, overlay.0);
                 } else if let Some(overlay) = self.pinned_overlays.remove(&active.0) {
                     self.event_tracker.stop_tracking(active);
                     self.overlay_manager.destroy_overlay(overlay);
                     self.overlay_rects.remove(&active.0);
                     self.overlay_focus_states.remove(&active.0);
+                    if let Some(ref mut stdin) = self.watchdog_stdin {
+                        use std::io::Write;
+                        let _ = writeln!(stdin, "UNPIN 0x{:X}", active.0);
+                        let _ = stdin.flush();
+                    }
                     println!("[Win-Float] [Info] Unpinned window HWND 0x{:X}. Destroyed overlay HWND 0x{:X}.", active.0, overlay.0);
                 }
             }
@@ -748,6 +758,16 @@ where
                 original_flags,
                 original_style,
             );
+        }
+
+        // Reset always-on-top status of any window set on top by the program
+        for &hwnd_val in self.pinned_overlays.keys() {
+            let hwnd = HWND(hwnd_val);
+            if let Err(e) = self.window_manager.set_always_on_top(hwnd, false) {
+                println!("[Win-Float] [Error] Failed to reset always-on-top status for window HWND 0x{:X} during shutdown: {}", hwnd_val, e);
+            } else {
+                println!("[Win-Float] [Info] Reset always-on-top status for window HWND 0x{:X} during shutdown.", hwnd_val);
+            }
         }
         
         // Explicitly close stdin to notify watchdog we're exiting gracefully
@@ -1217,10 +1237,10 @@ mod tests {
     #[test]
     fn test_focus_changed_ignores_transient_windows() {
         let wm = MockWindowManager::default();
-        let target = HWND(12345);
-        let transient_staging = HWND(88888);
-        let transient_switcher = HWND(99999);
-        let normal_window = HWND(77777);
+        let target = HWND(12301);
+        let transient_staging = HWND(88801);
+        let transient_switcher = HWND(99901);
+        let normal_window = HWND(77701);
 
         *wm.active_window.lock().unwrap() = target;
 
@@ -1236,9 +1256,9 @@ mod tests {
         // Set up mock class names
         {
             let mut map = HashMap::new();
-            map.insert(88888, "ForegroundStaging".to_string());
-            map.insert(99999, "XamlExplorerHostIslandWindow".to_string());
-            map.insert(77777, "NormalWindowClass".to_string());
+            map.insert(88801, "ForegroundStaging".to_string());
+            map.insert(99901, "XamlExplorerHostIslandWindow".to_string());
+            map.insert(77701, "NormalWindowClass".to_string());
             *TEST_CLASS_NAMES.lock().unwrap() = Some(map);
         }
 
@@ -1263,6 +1283,67 @@ mod tests {
 
         // Clean up
         *TEST_CLASS_NAMES.lock().unwrap() = None;
+    }
+
+    #[test]
+    fn test_controller_always_on_top_reset_on_drop() {
+        use std::sync::Arc;
+
+        struct SharedMockWindowManager {
+            active_window: HWND,
+            always_on_top_calls: Arc<Mutex<Vec<(HWND, bool)>>>,
+        }
+
+        impl WindowManager for SharedMockWindowManager {
+            fn get_active_window(&self) -> Result<HWND, String> {
+                Ok(self.active_window)
+            }
+            fn set_always_on_top(&self, hwnd: HWND, enabled: bool) -> Result<(), String> {
+                self.always_on_top_calls.lock().unwrap().push((hwnd, enabled));
+                Ok(())
+            }
+            fn set_transparency(&self, _hwnd: HWND, _alpha: u8) -> Result<(), String> {
+                Ok(())
+            }
+            fn is_always_on_top(&self, _hwnd: HWND) -> Result<bool, String> {
+                Ok(false)
+            }
+            fn get_window_style_info(&self, _hwnd: HWND) -> Result<(bool, u8, u32, u32, i32), String> {
+                Ok((false, 255, 0, 0, 0))
+            }
+            fn restore_window_style_info(&self, _hwnd: HWND, _was_layered: bool, _alpha: u8, _cr_key: u32, _flags: u32, _style: i32) -> Result<(), String> {
+                Ok(())
+            }
+        }
+
+        let calls = Arc::new(Mutex::new(Vec::new()));
+        let target = HWND(12302);
+
+        {
+            let wm = SharedMockWindowManager {
+                active_window: target,
+                always_on_top_calls: Arc::clone(&calls),
+            };
+            let hook = MockInputHook;
+            let om = MockOverlayManager::default();
+            let tracker = MockEventTracker::default();
+            let mut controller = AppController::new(wm, hook, om, tracker).unwrap();
+
+            // Pin the window. This will call set_always_on_top(target, true).
+            controller.handle_hotkey(HOTKEY_TOPMOST_ID).unwrap();
+            
+            // Check that it registered a pin call
+            let current_calls = calls.lock().unwrap().clone();
+            assert!(current_calls.contains(&(target, true)));
+        } // controller is dropped here.
+
+        // Now verify that set_always_on_top(target, false) was called when the controller was dropped.
+        let final_calls = calls.lock().unwrap().clone();
+        assert!(
+            final_calls.contains(&(target, false)),
+            "Expected target window HWND(12302) always-on-top status to be reset on controller drop. Actual calls: {:?}",
+            final_calls
+        );
     }
 }
 

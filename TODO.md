@@ -86,4 +86,8 @@ Follow the TDD cycle strictly: write failing test -> verify -> write minimal imp
 - [x] **Task 21: Filter transient staging and switcher window handles during focus events**
   - Ignore OS focus-staging and task-switching window classes (`ForegroundStaging`, `XamlExplorerHostIslandWindow`, `MultitaskingViewFrame`) when tracking foreground window changes.
   - Verify with unit tests.
+- [x] **Task 22: Reset always-on-top status of pinned windows on program termination**
+  - Reset always-on-top status during AppController drop.
+  - Send PIN/UNPIN commands to watchdog to ensure robust cleanup during abrupt crashes/terminations.
+  - Verify with unit tests.
 

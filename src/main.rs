@@ -19,13 +19,13 @@ use windows::Win32::UI::WindowsAndMessaging::{
     HWND_MESSAGE, WS_POPUP, HMENU, PostThreadMessageW, WM_QUIT,
     IsWindow, GetWindowLongW, SetWindowLongW, SetLayeredWindowAttributes, GWL_EXSTYLE,
     WS_EX_LAYERED, SetWindowPos, SWP_NOMOVE, SWP_NOSIZE, SWP_NOZORDER,
-    SWP_FRAMECHANGED, SWP_NOACTIVATE,
+    SWP_FRAMECHANGED, SWP_NOACTIVATE, HWND_NOTOPMOST,
 };
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::System::Console::{SetConsoleCtrlHandler, CTRL_C_EVENT};
 use windows::Win32::System::Threading::GetCurrentThreadId;
 use std::io::BufRead;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 static mut MAIN_THREAD_ID: u32 = 0;
 
@@ -107,12 +107,12 @@ struct RestoreState {
     original_style: i32,
 }
 
-fn run_watchdog(parent_pid: u32) {
-    println!("[Win-Float] [Info] Watchdog started for parent PID {}.", parent_pid);
-    let stdin = std::io::stdin();
-    let mut map = HashMap::<isize, RestoreState>::new();
-
-    for line in stdin.lock().lines() {
+fn parse_watchdog_commands<R: BufRead>(
+    reader: R,
+    map: &mut HashMap<isize, RestoreState>,
+    pinned: &mut HashSet<isize>,
+) {
+    for line in reader.lines() {
         let line = match line {
             Ok(l) => l,
             Err(_) => break,
@@ -146,11 +146,33 @@ fn run_watchdog(parent_pid: u32) {
                 let hwnd_hex = parts[1].trim_start_matches("0x");
                 if let Ok(hwnd) = isize::from_str_radix(hwnd_hex, 16) {
                     map.remove(&hwnd);
+                    pinned.remove(&hwnd);
+                }
+            }
+            "PIN" if parts.len() >= 2 => {
+                let hwnd_hex = parts[1].trim_start_matches("0x");
+                if let Ok(hwnd) = isize::from_str_radix(hwnd_hex, 16) {
+                    pinned.insert(hwnd);
+                }
+            }
+            "UNPIN" if parts.len() >= 2 => {
+                let hwnd_hex = parts[1].trim_start_matches("0x");
+                if let Ok(hwnd) = isize::from_str_radix(hwnd_hex, 16) {
+                    pinned.remove(&hwnd);
                 }
             }
             _ => {}
         }
     }
+}
+
+fn run_watchdog(parent_pid: u32) {
+    println!("[Win-Float] [Info] Watchdog started for parent PID {}.", parent_pid);
+    let stdin = std::io::stdin();
+    let mut map = HashMap::<isize, RestoreState>::new();
+    let mut pinned = HashSet::<isize>::new();
+
+    parse_watchdog_commands(stdin.lock(), &mut map, &mut pinned);
 
     println!("[Win-Float] [Info] Watchdog restoring transparency styles on EOF.");
     for (hwnd_val, state) in map {
@@ -182,6 +204,24 @@ fn run_watchdog(parent_pid: u32) {
             }
         }
     }
+
+    println!("[Win-Float] [Info] Watchdog restoring always-on-top states on EOF.");
+    for hwnd_val in pinned {
+        let hwnd = HWND(hwnd_val);
+        unsafe {
+            if IsWindow(hwnd).as_bool() {
+                let _ = SetWindowPos(
+                    hwnd,
+                    HWND_NOTOPMOST,
+                    0,
+                    0,
+                    0,
+                    0,
+                    SWP_NOMOVE | SWP_NOSIZE,
+                );
+            }
+        }
+    }
 }
 
 fn main() -> Result<(), String> {
@@ -209,4 +249,26 @@ fn main() -> Result<(), String> {
     let res = controller.run();
     println!("[Win-Float] [Info] Message loop exited. Cleaning up resource handles.");
     res
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_watchdog_parser_pin_unpin() {
+        let input = "PIN 0x1A2B\nADD 0x3C4D false 255 0 0 1234\nPIN 0x5E6F\nUNPIN 0x1A2B\nREMOVE 0x3C4D\n";
+        let mut map = HashMap::new();
+        let mut pinned = HashSet::new();
+        parse_watchdog_commands(input.as_bytes(), &mut map, &mut pinned);
+
+        // PIN 0x1A2B, then UNPIN 0x1A2B -> pinned should not contain 0x1A2B.
+        assert!(!pinned.contains(&0x1A2B));
+
+        // ADD 0x3C4D, then REMOVE 0x3C4D -> map should not contain 0x3C4D.
+        assert!(!map.contains_key(&0x3C4D));
+
+        // PIN 0x5E6F -> pinned should contain 0x5E6F.
+        assert!(pinned.contains(&0x5E6F));
+    }
 }
