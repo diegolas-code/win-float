@@ -105,3 +105,8 @@ Follow the TDD cycle strictly: write failing test -> verify -> write minimal imp
   - Debounce layout repositioning and redrawing by 150ms using Win32 event timers on target window handle IDs.
   - Implement a `synchronous_window_moves` flag to support test synchronization.
   - Verify with new unit test `test_window_moved_debounces_and_updates_on_timer`.
+- [x] **Task 26: Pinned window accent overlay repositioning during transparency mode**
+  - Fix tracking in WindowEventTracker to support multiple overlays per target window.
+  - Reposition/hide both pinned and HUD overlays during window moves, snaps, and movesize drag loops.
+  - Verify with new unit test `test_pinned_transparency_accent_overlay_moves_correctly`.
+

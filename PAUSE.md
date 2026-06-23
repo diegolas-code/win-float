@@ -4,22 +4,21 @@ This document tracks the project state at the end of each development session. I
 
 ## 1. Last Updated
 - **Date:** 2026-06-22
-- **Task Reference:** Window Snap Debouncing and Overlay Hiding
+- **Task Reference:** Task 26: Pinned window accent overlay repositioning during transparency mode
 
 ## 2. Session Achievements
-- **Overlay Decoupling & Mocking**: Refactored `AppController` to replace unsafe direct Win32 `SetWindowPos` calls with `reposition_overlay` in `OverlayManager` trait. Updated both `LiveOverlayManager` and `MockOverlayManager` to implement this. This enables proper coordinate tracking in tests and cleaner architecture.
-- **Window Snap (Win+Arrow) Debouncing**: Implemented 150ms debouncing for overlay repositioning/redrawing using Win32 event timers (`SetTimer`/`KillTimer`) when windows are moved outside manual move loops (e.g. Aero Snapping).
-- **Hiding during snaps/moves**: Pinned overlays are now immediately hidden during snapping and transitions, only reappearing and repositioning after the window settles, eliminating visual jitter and alignment mismatches during animation.
-- **Synchronous test path**: Added a `synchronous_window_moves` flag to `AppController` to support synchronous execution in existing unit tests, and wrote a new test `test_window_moved_debounces_and_updates_on_timer` verifying the debouncing mechanism.
-- **TDD & Unit Testing:** All 47 tests pass successfully.
+- **Multiple Overlays Support in WindowEventTracker**: Updated `TRACKED_WINDOWS` global map to track a list (`Vec<HWND>`) of overlays per target window, allowing the pinned overlay and the HUD overlay to be tracked concurrently.
+- **Selective stop_tracking**: Updated the `EventTracker` signature and its implementations to take both the target window handle and the overlay window handle, preventing un-tracking the pinned overlay when exiting the transparency modal.
+- **Co-existent Overlay Repositioning**: Modified `AppController`'s move, movesize, and debouncing handlers to correctly hide and reposition all active overlays (both pinned and HUD overlays) when they co-exist for the target window.
+- **TDD & Unit Testing:** Wrote a regression test `test_pinned_transparency_accent_overlay_moves_correctly` which reproduces the issue and verifies the fix. All 48 tests pass successfully.
 
 ## 3. Current Task State
-- **Active Task:** None. Snapping debouncing and overlay hiding fixes are complete.
-- **Status:** Uncommitted changes ready to be committed on branch `fix/accent-overlay-resize`.
+- **Active Task:** Bug fix for pinned window transparency accent overlay.
+- **Status:** Complete.
 
 ## 4. Pending / Next Steps
-- Commit the debouncing improvements to branch `fix/accent-overlay-resize` and push to remote.
+- Commit the changes on branch `fix/pinned-transparency-accent-overlay`.
 
 ## 5. System State & Compile Verification
 - **Code compiles:** Yes (`cargo check` and `cargo build` successful)
-- **Tests passing:** Yes (`cargo test` successful: 47 tests passed)
+- **Tests passing:** Yes (`cargo test` successful: 48 tests passed)

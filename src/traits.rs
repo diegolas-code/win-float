@@ -58,7 +58,7 @@ pub trait OverlayManager {
 
 pub trait EventTracker {
     fn start_tracking(&self, target_hwnd: HWND, overlay_hwnd: HWND) -> Result<(), String>;
-    fn stop_tracking(&self, target_hwnd: HWND);
+    fn stop_tracking(&self, target_hwnd: HWND, overlay_hwnd: HWND);
     fn is_tracking(&self, target_hwnd: HWND) -> bool;
 }
 
@@ -235,11 +235,11 @@ impl EventTracker for MockEventTracker {
         Ok(())
     }
 
-    fn stop_tracking(&self, target_hwnd: HWND) {
+    fn stop_tracking(&self, target_hwnd: HWND, overlay_hwnd: HWND) {
         self.tracked
             .lock()
             .unwrap()
-            .retain(|&(t, _)| t != target_hwnd);
+            .retain(|&(t, o)| t != target_hwnd || o != overlay_hwnd);
     }
 
     fn is_tracking(&self, target_hwnd: HWND) -> bool {

@@ -344,7 +344,7 @@ where
                         active.0, overlay.0
                     );
                 } else if let Some(overlay) = self.pinned_overlays.remove(&active.0) {
-                    self.event_tracker.stop_tracking(active);
+                    self.event_tracker.stop_tracking(active, overlay);
                     self.overlay_manager.destroy_overlay(overlay);
                     self.overlay_rects.remove(&active.0);
                     self.overlay_focus_states.remove(&active.0);
@@ -617,7 +617,7 @@ where
                 self.slider_velocity = 0.0;
                 self.last_physics_update = None;
                 if let Some(overlay) = self.hud_overlay.take() {
-                    self.event_tracker.stop_tracking(target_hwnd);
+                    self.event_tracker.stop_tracking(target_hwnd, overlay);
                     self.overlay_manager.destroy_overlay(overlay);
                 }
                 self.modal_target = None;
@@ -663,7 +663,7 @@ where
                 }
                 if let Some(overlay) = self.hud_overlay.take() {
                     if let Some(target) = self.modal_target {
-                        self.event_tracker.stop_tracking(target);
+                        self.event_tracker.stop_tracking(target, overlay);
                     }
                     self.overlay_manager.destroy_overlay(overlay);
                 }
@@ -682,74 +682,94 @@ where
             return Ok(());
         }
 
-        let overlay_hwnd = if self.modal_target == Some(target_hwnd) {
-            self.hud_overlay
-        } else {
-            self.pinned_overlays.get(&target_hwnd.0).copied()
-        };
+        let mut active_overlays = Vec::new();
+        if let Some(&pinned) = self.pinned_overlays.get(&target_hwnd.0) {
+            active_overlays.push(pinned);
+        }
+        if self.modal_target == Some(target_hwnd) {
+            if let Some(hud) = self.hud_overlay {
+                active_overlays.push(hud);
+            }
+        }
 
-        if let Some(overlay) = overlay_hwnd {
+        if active_overlays.is_empty() {
+            return Ok(());
+        }
+
+        for &overlay in &active_overlays {
             // Hide overlay immediately when moves/resizes start (e.g. during snapping animations)
             self.overlay_manager.set_visibility(overlay, false);
+        }
 
-            if self.synchronous_window_moves {
-                return self.handle_debounced_window_moved(target_hwnd);
-            }
+        if self.synchronous_window_moves {
+            return self.handle_debounced_window_moved(target_hwnd);
+        }
 
-            unsafe {
-                use windows::Win32::UI::WindowsAndMessaging::SetTimer;
-                // Use target_hwnd.0 as the timer ID. Set a 150ms debounce delay.
-                let _ = SetTimer(overlay, target_hwnd.0 as usize, 150, None);
-            }
+        unsafe {
+            use windows::Win32::UI::WindowsAndMessaging::SetTimer;
+            // Use target_hwnd.0 as the timer ID. Set a 150ms debounce delay.
+            // Register the timer on the first active overlay window.
+            let _ = SetTimer(active_overlays[0], target_hwnd.0 as usize, 150, None);
         }
         Ok(())
     }
 
     pub fn handle_debounced_window_moved(&mut self, target_hwnd: HWND) -> Result<(), String> {
-        let overlay_hwnd = if self.modal_target == Some(target_hwnd) {
-            self.hud_overlay
-        } else {
-            self.pinned_overlays.get(&target_hwnd.0).copied()
-        };
-
-        if let Some(overlay) = overlay_hwnd {
-            unsafe {
-                use windows::Win32::UI::WindowsAndMessaging::KillTimer;
-                let _ = KillTimer(overlay, target_hwnd.0 as usize);
+        let mut active_overlays = Vec::new();
+        if let Some(&pinned) = self.pinned_overlays.get(&target_hwnd.0) {
+            active_overlays.push((pinned, false)); // (overlay, is_hud)
+        }
+        if self.modal_target == Some(target_hwnd) {
+            if let Some(hud) = self.hud_overlay {
+                active_overlays.push((hud, true));
             }
-            let is_maximized = self.window_manager.is_maximized(target_hwnd)?;
-            if is_maximized {
+        }
+
+        if active_overlays.is_empty() {
+            return Ok(());
+        }
+
+        unsafe {
+            use windows::Win32::UI::WindowsAndMessaging::KillTimer;
+            let _ = KillTimer(active_overlays[0].0, target_hwnd.0 as usize);
+        }
+
+        let is_maximized = self.window_manager.is_maximized(target_hwnd)?;
+        if is_maximized {
+            for &(overlay, _) in &active_overlays {
                 self.overlay_manager.set_visibility(overlay, false);
+            }
+            return Ok(());
+        }
+
+        let rect = get_window_rect_helper(target_hwnd)
+            .unwrap_or(crate::hud_layout::Rect::new(0, 0, 800, 600));
+
+        let last_rect = self.overlay_rects.get(&target_hwnd.0).copied();
+
+        if let Some(lr) = last_rect {
+            if lr.left == rect.left
+                && lr.top == rect.top
+                && lr.width() == rect.width()
+                && lr.height() == rect.height()
+            {
+                // Nothing changed. Avoid duplicate repositioning and drawing.
+                // But make sure all overlays are visible again
+                for &(overlay, _) in &active_overlays {
+                    self.overlay_manager.set_visibility(overlay, true);
+                }
                 return Ok(());
             }
+        }
 
-            let rect = get_window_rect_helper(target_hwnd)
-                .unwrap_or(crate::hud_layout::Rect::new(0, 0, 800, 600));
+        let size_changed = last_rect
+            .map(|lr| lr.width() != rect.width() || lr.height() != rect.height())
+            .unwrap_or(true);
 
-            let last_rect = self.overlay_rects.get(&target_hwnd.0).copied();
+        self.overlay_rects.insert(target_hwnd.0, rect);
 
-            if let Some(lr) = last_rect {
-                if lr.left == rect.left
-                    && lr.top == rect.top
-                    && lr.width() == rect.width()
-                    && lr.height() == rect.height()
-                {
-                    // Nothing changed. Avoid duplicate repositioning and drawing.
-                    // But make sure the overlay is visible again
-                    self.overlay_manager.set_visibility(overlay, true);
-                    return Ok(());
-                }
-            }
-
-            let size_changed = last_rect
-                .map(|lr| lr.width() != rect.width() || lr.height() != rect.height())
-                .unwrap_or(true);
-
-            self.overlay_rects.insert(target_hwnd.0, rect);
-
-            let is_modal = self.modal_target == Some(target_hwnd);
-
-            let (ox, oy, ow, oh) = if is_modal {
+        for &(overlay, is_hud) in &active_overlays {
+            let (ox, oy, ow, oh) = if is_hud {
                 let hud_w = 200;
                 let hud_h = 80;
                 let (hx, hy) = crate::hud_layout::calculate_hud_position(rect, hud_w, hud_h);
@@ -762,7 +782,7 @@ where
                 .overlay_manager
                 .reposition_overlay(overlay, ox, oy, ow, oh);
 
-            if !is_modal && size_changed {
+            if !is_hud && size_changed {
                 self.update_pinned_overlay_graphics(target_hwnd, overlay, rect, None)?;
             }
 
@@ -782,26 +802,47 @@ where
         if let Some(&overlay) = self.pinned_overlays.get(&target_hwnd.0) {
             self.overlay_manager.set_visibility(overlay, false);
         }
+        if self.modal_target == Some(target_hwnd) {
+            if let Some(hud) = self.hud_overlay {
+                self.overlay_manager.set_visibility(hud, false);
+            }
+        }
         Ok(())
     }
 
     pub fn handle_movesize_end(&mut self, target_hwnd: HWND) -> Result<(), String> {
         self.movesize_targets.remove(&target_hwnd.0);
-        if let Some(&overlay) = self.pinned_overlays.get(&target_hwnd.0) {
-            let is_maximized = self.window_manager.is_maximized(target_hwnd)?;
-            if is_maximized {
-                self.overlay_manager.set_visibility(overlay, false);
-                return Ok(());
+
+        let mut active_overlays = Vec::new();
+        if let Some(&pinned) = self.pinned_overlays.get(&target_hwnd.0) {
+            active_overlays.push((pinned, false));
+        }
+        if self.modal_target == Some(target_hwnd) {
+            if let Some(hud) = self.hud_overlay {
+                active_overlays.push((hud, true));
             }
+        }
 
-            let rect = get_window_rect_helper(target_hwnd)
-                .unwrap_or(crate::hud_layout::Rect::new(0, 0, 800, 600));
+        if active_overlays.is_empty() {
+            return Ok(());
+        }
 
-            // Update cached rect
-            self.overlay_rects.insert(target_hwnd.0, rect);
+        let is_maximized = self.window_manager.is_maximized(target_hwnd)?;
+        if is_maximized {
+            for &(overlay, _) in &active_overlays {
+                self.overlay_manager.set_visibility(overlay, false);
+            }
+            return Ok(());
+        }
 
-            let is_modal = self.modal_target == Some(target_hwnd);
-            let (ox, oy, ow, oh) = if is_modal {
+        let rect = get_window_rect_helper(target_hwnd)
+            .unwrap_or(crate::hud_layout::Rect::new(0, 0, 800, 600));
+
+        // Update cached rect
+        self.overlay_rects.insert(target_hwnd.0, rect);
+
+        for &(overlay, is_hud) in &active_overlays {
+            let (ox, oy, ow, oh) = if is_hud {
                 let hud_w = 200;
                 let hud_h = 80;
                 let (hx, hy) = crate::hud_layout::calculate_hud_position(rect, hud_w, hud_h);
@@ -814,7 +855,7 @@ where
                 .overlay_manager
                 .reposition_overlay(overlay, ox, oy, ow, oh);
 
-            if !is_modal {
+            if !is_hud {
                 self.update_pinned_overlay_graphics(target_hwnd, overlay, rect, None)?;
             }
 
@@ -843,7 +884,7 @@ where
                 "[Win-Float] [Info] Tracked window HWND 0x{:X} closed. Stopping track and cleaning up overlay HWND 0x{:X}.",
                 target_hwnd.0, overlay.0
             );
-            self.event_tracker.stop_tracking(target_hwnd);
+            self.event_tracker.stop_tracking(target_hwnd, overlay);
             self.overlay_manager.destroy_overlay(overlay);
         }
         Ok(())
@@ -1983,4 +2024,81 @@ mod tests {
         // Cleanup
         *TEST_RECT.lock().unwrap() = None;
     }
+
+    #[test]
+    fn test_pinned_transparency_accent_overlay_moves_correctly() {
+        let _test_guard = TEST_SERIALIZATION_MUTEX.lock().unwrap();
+        let wm = MockWindowManager::default();
+        let target = HWND(12345);
+        *wm.active_window.lock().unwrap() = target;
+
+        let hook = MockInputHook;
+        let om = MockOverlayManager::default();
+        let tracker = MockEventTracker::default();
+        let mut controller = AppController::new(wm, hook, om, tracker).unwrap();
+
+        // Set synchronous window moves to true to simplify coordinate assertions
+        controller.synchronous_window_moves = true;
+
+        // Preset initial mock rect
+        *TEST_RECT.lock().unwrap() = Some(crate::hud_layout::Rect::new(100, 100, 300, 200));
+
+        // Pin the window
+        controller.handle_hotkey(HOTKEY_TOPMOST_ID).unwrap();
+        let pinned_overlay = controller.pinned_overlays.get(&target.0).copied().unwrap();
+
+        // Check initial pinned overlay position
+        {
+            let overlays = controller.overlay_manager.overlays.lock().unwrap();
+            assert_eq!(overlays.len(), 1);
+            let (h, ox, oy, _, _) = overlays[0];
+            assert_eq!(h, pinned_overlay);
+            assert_eq!(ox, 100);
+            assert_eq!(oy, 93);
+        }
+
+        // Enter transparency mode on the pinned window
+        controller.handle_hotkey(HOTKEY_MODAL_ID).unwrap();
+        let _hud_overlay = controller.hud_overlay.unwrap();
+
+        // Check overlays count - there should be 2 overlays (pinned overlay + HUD overlay)
+        {
+            let overlays = controller.overlay_manager.overlays.lock().unwrap();
+            assert_eq!(overlays.len(), 2);
+        }
+
+        // Move the window
+        *TEST_RECT.lock().unwrap() = Some(crate::hud_layout::Rect::new(150, 180, 350, 280));
+        controller.handle_window_moved(target).unwrap();
+
+        // Verify that the pinned overlay moved to the new position!
+        {
+            let overlays = controller.overlay_manager.overlays.lock().unwrap();
+            let pinned_pos = overlays.iter().find(|&&(h, _, _, _, _)| h == pinned_overlay).unwrap();
+            let (_, ox, oy, _, _) = *pinned_pos;
+            assert_eq!(ox, 150);
+            assert_eq!(oy, 173);
+        }
+
+        // Commit transparency adjustments (exit transparency modal)
+        controller.handle_hotkey(HOTKEY_MODAL_ID).unwrap();
+        assert!(controller.hud_overlay.is_none());
+
+        // Move the window again (now that we are out of transparency mode)
+        *TEST_RECT.lock().unwrap() = Some(crate::hud_layout::Rect::new(200, 220, 400, 320));
+        controller.handle_window_moved(target).unwrap();
+
+        // Verify that the pinned overlay is still tracked and moved to the new position!
+        {
+            let overlays = controller.overlay_manager.overlays.lock().unwrap();
+            let pinned_pos = overlays.iter().find(|&&(h, _, _, _, _)| h == pinned_overlay).unwrap();
+            let (_, ox, oy, _, _) = *pinned_pos;
+            assert_eq!(ox, 200);
+            assert_eq!(oy, 213);
+        }
+
+        // Cleanup
+        *TEST_RECT.lock().unwrap() = None;
+    }
 }
+

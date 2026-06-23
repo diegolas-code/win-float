@@ -14,7 +14,7 @@ pub const WM_TACTILE_FOCUS_CHANGED: u32 = 0x8003;
 pub const WM_TACTILE_MOVESIZE_START: u32 = 0x8004;
 pub const WM_TACTILE_MOVESIZE_END: u32 = 0x8005;
 
-static TRACKED_WINDOWS: Mutex<Option<HashMap<isize, HWND>>> = Mutex::new(None);
+static TRACKED_WINDOWS: Mutex<Option<HashMap<isize, Vec<HWND>>>> = Mutex::new(None);
 
 pub struct WindowEventTracker {
     hook: Mutex<Option<HWINEVENTHOOK>>,
@@ -51,7 +51,10 @@ impl crate::traits::EventTracker for WindowEventTracker {
                 *map_guard = Some(HashMap::new());
             }
             if let Some(ref mut map) = *map_guard {
-                map.insert(target_hwnd.0, overlay_hwnd);
+                let list = map.entry(target_hwnd.0).or_insert_with(Vec::new);
+                if !list.contains(&overlay_hwnd) {
+                    list.push(overlay_hwnd);
+                }
             }
         }
 
@@ -133,10 +136,15 @@ impl crate::traits::EventTracker for WindowEventTracker {
         Ok(())
     }
 
-    fn stop_tracking(&self, target_hwnd: HWND) {
+    fn stop_tracking(&self, target_hwnd: HWND, overlay_hwnd: HWND) {
         let mut map_guard = TRACKED_WINDOWS.lock().unwrap();
         if let Some(ref mut map) = *map_guard {
-            map.remove(&target_hwnd.0);
+            if let Some(list) = map.get_mut(&target_hwnd.0) {
+                list.retain(|&h| h != overlay_hwnd);
+                if list.is_empty() {
+                    map.remove(&target_hwnd.0);
+                }
+            }
 
             if map.is_empty() {
                 let mut hook_guard = self.hook.lock().unwrap();
@@ -216,15 +224,17 @@ unsafe extern "system" fn win_event_proc(
                 Err(_) => return,
             };
             if let Some(ref map) = *map_guard {
-                for (&target_hwnd_val, &overlay) in map {
-                    let _ = unsafe {
-                        PostMessageW(
-                            overlay,
-                            WM_TACTILE_FOCUS_CHANGED,
-                            WPARAM(target_hwnd_val as usize),
-                            LPARAM(hwnd.0),
-                        )
-                    };
+                for (&target_hwnd_val, overlays) in map {
+                    if let Some(&overlay) = overlays.first() {
+                        let _ = unsafe {
+                            PostMessageW(
+                                overlay,
+                                WM_TACTILE_FOCUS_CHANGED,
+                                WPARAM(target_hwnd_val as usize),
+                                LPARAM(hwnd.0),
+                            )
+                        };
+                    }
                 }
             }
         }
@@ -241,7 +251,7 @@ unsafe extern "system" fn win_event_proc(
             Err(_) => return,
         };
         if let Some(ref map) = *map_guard {
-            map.get(&hwnd.0).copied()
+            map.get(&hwnd.0).and_then(|v| v.first().copied())
         } else {
             None
         }
@@ -313,7 +323,7 @@ mod tests {
         assert!(tracker.is_tracking(target)); // should fail because dummy returns false
 
         // Stop tracking deactivates it
-        tracker.stop_tracking(target);
+        tracker.stop_tracking(target, overlay);
         assert!(!tracker.is_tracking(target));
     }
 }
