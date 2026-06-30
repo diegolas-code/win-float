@@ -110,19 +110,15 @@ unsafe extern "system" fn keyboard_hook_proc(code: i32, wparam: WPARAM, lparam: 
 
         // Determine if we should swallow the key event to prevent it from reaching the target window.
         // We only swallow keys if the active window is the target window, and it is not a modifier or Alt/Ctrl combination.
-        use windows::Win32::UI::WindowsAndMessaging::GetForegroundWindow;
         use windows::Win32::UI::Input::KeyboardAndMouse::{GetKeyState, VK_CONTROL};
+        use windows::Win32::UI::WindowsAndMessaging::GetForegroundWindow;
 
         let fg_window = unsafe { GetForegroundWindow() };
         let is_target_active = fg_window == state.target_hwnd;
         let is_ctrl_down = unsafe { (GetKeyState(VK_CONTROL.0 as i32) as u16 & 0x8000) != 0 };
 
-        should_swallow = should_swallow_key(
-            vk_code,
-            kbd_struct.flags.0,
-            is_ctrl_down,
-            is_target_active,
-        );
+        should_swallow =
+            should_swallow_key(vk_code, kbd_struct.flags.0, is_ctrl_down, is_target_active);
     }
 
     if should_swallow {
@@ -150,7 +146,7 @@ pub fn should_swallow_key(
         0x10 | 0xA0 | 0xA1 | // VK_SHIFT, VK_LSHIFT, VK_RSHIFT
         0x11 | 0xA2 | 0xA3 | // VK_CONTROL, VK_LCONTROL, VK_RCONTROL
         0x12 | 0xA4 | 0xA5 | // VK_MENU, VK_LMENU, VK_RMENU
-        0x5B | 0x5C          // VK_LWIN, VK_RWIN
+        0x5B | 0x5C // VK_LWIN, VK_RWIN
     );
 
     let is_alt_down = (flags & LLKHF_ALTDOWN.0) != 0;
@@ -184,11 +180,11 @@ mod tests {
 
     #[test]
     fn test_should_swallow_key_cases() {
-        use windows::Win32::UI::WindowsAndMessaging::LLKHF_ALTDOWN;
         use windows::Win32::UI::Input::KeyboardAndMouse::{
-            VK_A, VK_CONTROL, VK_LCONTROL, VK_LMENU, VK_LWIN, VK_MENU, VK_RCONTROL, VK_RMENU,
-            VK_RWIN, VK_RIGHT, VK_ESCAPE, VK_RETURN, VK_SHIFT, VK_LSHIFT, VK_RSHIFT,
+            VK_A, VK_CONTROL, VK_ESCAPE, VK_LCONTROL, VK_LMENU, VK_LSHIFT, VK_LWIN, VK_MENU,
+            VK_RCONTROL, VK_RETURN, VK_RIGHT, VK_RMENU, VK_RSHIFT, VK_RWIN, VK_SHIFT,
         };
+        use windows::Win32::UI::WindowsAndMessaging::LLKHF_ALTDOWN;
 
         // Case 1: Target window not active -> Do NOT swallow (returns false)
         assert!(!should_swallow_key(VK_A.0 as u32, 0, false, false));
@@ -213,7 +209,12 @@ mod tests {
         assert!(!should_swallow_key(VK_RSHIFT.0 as u32, 0, false, true));
 
         // Case 4: Target window active, Alt is down (LLKHF_ALTDOWN set in flags) -> Do NOT swallow (returns false)
-        assert!(!should_swallow_key(VK_A.0 as u32, LLKHF_ALTDOWN.0, false, true));
+        assert!(!should_swallow_key(
+            VK_A.0 as u32,
+            LLKHF_ALTDOWN.0,
+            false,
+            true
+        ));
 
         // Case 5: Target window active, Ctrl is down -> Do NOT swallow (returns false)
         assert!(!should_swallow_key(VK_A.0 as u32, 0, true, true));

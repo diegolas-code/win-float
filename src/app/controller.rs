@@ -441,7 +441,10 @@ where
     }
 
     pub fn handle_key_input(&mut self, vk_code: u32, event_type: i32) -> Result<(), String> {
-        println!("[Win-Float] [Debug] handle_key_input: vk_code=0x{:X}, event_type={}, pressed_keys={:?}, exiting_modal={}", vk_code, event_type, self.pressed_keys, self.exiting_modal);
+        println!(
+            "[Win-Float] [Debug] handle_key_input: vk_code=0x{:X}, event_type={}, pressed_keys={:?}, exiting_modal={}",
+            vk_code, event_type, self.pressed_keys, self.exiting_modal
+        );
         if event_type == 0 {
             if !self.exiting_modal {
                 self.pressed_keys.insert(vk_code);
@@ -2152,7 +2155,10 @@ mod tests {
         // Verify that the pinned overlay moved to the new position!
         {
             let overlays = controller.overlay_manager.overlays.lock().unwrap();
-            let pinned_pos = overlays.iter().find(|&&(h, _, _, _, _)| h == pinned_overlay).unwrap();
+            let pinned_pos = overlays
+                .iter()
+                .find(|&&(h, _, _, _, _)| h == pinned_overlay)
+                .unwrap();
             let (_, ox, oy, _, _) = *pinned_pos;
             assert_eq!(ox, 150);
             assert_eq!(oy, 173);
@@ -2169,7 +2175,10 @@ mod tests {
         // Verify that the pinned overlay is still tracked and moved to the new position!
         {
             let overlays = controller.overlay_manager.overlays.lock().unwrap();
-            let pinned_pos = overlays.iter().find(|&&(h, _, _, _, _)| h == pinned_overlay).unwrap();
+            let pinned_pos = overlays
+                .iter()
+                .find(|&&(h, _, _, _, _)| h == pinned_overlay)
+                .unwrap();
             let (_, ox, oy, _, _) = *pinned_pos;
             assert_eq!(ox, 200);
             assert_eq!(oy, 213);
@@ -2179,4 +2188,3 @@ mod tests {
         *TEST_RECT.lock().unwrap() = None;
     }
 }
-
