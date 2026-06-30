@@ -113,6 +113,35 @@ unsafe extern "system" fn keyboard_hook_proc(code: i32, wparam: WPARAM, lparam: 
     unsafe { CallNextHookEx(None, code, wparam, lparam) }
 }
 
+pub fn should_swallow_key(
+    vk_code: u32,
+    flags: u32,
+    is_ctrl_down: bool,
+    is_target_active: bool,
+) -> bool {
+    if !is_target_active {
+        return false;
+    }
+
+    use windows::Win32::UI::WindowsAndMessaging::LLKHF_ALTDOWN;
+
+    // Modifiers themselves: Ctrl (0x11, 0xA2, 0xA3), Alt (0x12, 0xA4, 0xA5), Win (0x5B, 0x5C)
+    let is_modifier = matches!(
+        vk_code,
+        0x11 | 0xA2 | 0xA3 | // VK_CONTROL, VK_LCONTROL, VK_RCONTROL
+        0x12 | 0xA4 | 0xA5 | // VK_MENU, VK_LMENU, VK_RMENU
+        0x5B | 0x5C          // VK_LWIN, VK_RWIN
+    );
+
+    let is_alt_down = (flags & LLKHF_ALTDOWN.0) != 0;
+
+    if is_modifier || is_alt_down || is_ctrl_down {
+        return false;
+    }
+
+    true
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -131,5 +160,39 @@ mod tests {
         // Release keyboard deactivates hook
         hook.release_keyboard();
         assert!(!hook.is_hook_active());
+    }
+
+    #[test]
+    fn test_should_swallow_key_cases() {
+        use windows::Win32::UI::WindowsAndMessaging::LLKHF_ALTDOWN;
+        use windows::Win32::UI::Input::KeyboardAndMouse::{
+            VK_A, VK_CONTROL, VK_LCONTROL, VK_LMENU, VK_LWIN, VK_MENU, VK_RCONTROL, VK_RMENU,
+            VK_RWIN, VK_RIGHT, VK_ESCAPE, VK_RETURN,
+        };
+
+        // Case 1: Target window not active -> Do NOT swallow (returns false)
+        assert!(!should_swallow_key(VK_A.0 as u32, 0, false, false));
+
+        // Case 2: Target window active, standard key (e.g. A, Arrows, Escape, Return) -> Swallow (returns true)
+        assert!(should_swallow_key(VK_A.0 as u32, 0, false, true));
+        assert!(should_swallow_key(VK_RIGHT.0 as u32, 0, false, true));
+        assert!(should_swallow_key(VK_ESCAPE.0 as u32, 0, false, true));
+        assert!(should_swallow_key(VK_RETURN.0 as u32, 0, false, true));
+
+        // Case 3: Target window active, modifier key itself -> Do NOT swallow (returns false)
+        assert!(!should_swallow_key(VK_CONTROL.0 as u32, 0, false, true));
+        assert!(!should_swallow_key(VK_LCONTROL.0 as u32, 0, false, true));
+        assert!(!should_swallow_key(VK_RCONTROL.0 as u32, 0, false, true));
+        assert!(!should_swallow_key(VK_MENU.0 as u32, 0, false, true));
+        assert!(!should_swallow_key(VK_LMENU.0 as u32, 0, false, true));
+        assert!(!should_swallow_key(VK_RMENU.0 as u32, 0, false, true));
+        assert!(!should_swallow_key(VK_LWIN.0 as u32, 0, false, true));
+        assert!(!should_swallow_key(VK_RWIN.0 as u32, 0, false, true));
+
+        // Case 4: Target window active, Alt is down (LLKHF_ALTDOWN set in flags) -> Do NOT swallow (returns false)
+        assert!(!should_swallow_key(VK_A.0 as u32, LLKHF_ALTDOWN.0, false, true));
+
+        // Case 5: Target window active, Ctrl is down -> Do NOT swallow (returns false)
+        assert!(!should_swallow_key(VK_A.0 as u32, 0, true, true));
     }
 }
