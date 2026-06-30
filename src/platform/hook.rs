@@ -13,18 +13,19 @@ pub const WM_TACTILE_KEY_EVENT: u32 = 0x8000; // WM_APP
 static mut HOOK_STATE: Option<HookState> = None;
 
 struct HookState {
+    receiver_hwnd: HWND,
     target_hwnd: HWND,
 }
 
 pub struct LiveInputHook {
-    target_hwnd: HWND,
+    receiver_hwnd: HWND,
     hook: Mutex<Option<HHOOK>>,
 }
 
 impl LiveInputHook {
-    pub fn new(target_hwnd: HWND) -> Self {
+    pub fn new(receiver_hwnd: HWND) -> Self {
         Self {
-            target_hwnd,
+            receiver_hwnd,
             hook: Mutex::new(None),
         }
     }
@@ -35,7 +36,7 @@ impl LiveInputHook {
 }
 
 impl InputHook for LiveInputHook {
-    fn capture_keyboard(&self) -> Result<(), String> {
+    fn capture_keyboard(&self, target_hwnd: HWND) -> Result<(), String> {
         let mut hook_guard = self.hook.lock().unwrap();
         if hook_guard.is_some() {
             return Ok(());
@@ -43,7 +44,8 @@ impl InputHook for LiveInputHook {
 
         unsafe {
             HOOK_STATE = Some(HookState {
-                target_hwnd: self.target_hwnd,
+                receiver_hwnd: self.receiver_hwnd,
+                target_hwnd,
             });
 
             let hinstance = GetModuleHandleW(PCWSTR::null())
@@ -99,7 +101,7 @@ unsafe extern "system" fn keyboard_hook_proc(code: i32, wparam: WPARAM, lparam: 
         // Post key message to our HUD window via the side-channel.
         let _ = unsafe {
             PostMessageW(
-                state.target_hwnd,
+                state.receiver_hwnd,
                 WM_TACTILE_KEY_EVENT,
                 WPARAM(vk_code as usize),
                 LPARAM(event_type),
@@ -142,9 +144,10 @@ pub fn should_swallow_key(
 
     use windows::Win32::UI::WindowsAndMessaging::LLKHF_ALTDOWN;
 
-    // Modifiers themselves: Ctrl (0x11, 0xA2, 0xA3), Alt (0x12, 0xA4, 0xA5), Win (0x5B, 0x5C)
+    // Modifiers themselves: Shift (0x10, 0xA0, 0xA1), Ctrl (0x11, 0xA2, 0xA3), Alt (0x12, 0xA4, 0xA5), Win (0x5B, 0x5C)
     let is_modifier = matches!(
         vk_code,
+        0x10 | 0xA0 | 0xA1 | // VK_SHIFT, VK_LSHIFT, VK_RSHIFT
         0x11 | 0xA2 | 0xA3 | // VK_CONTROL, VK_LCONTROL, VK_RCONTROL
         0x12 | 0xA4 | 0xA5 | // VK_MENU, VK_LMENU, VK_RMENU
         0x5B | 0x5C          // VK_LWIN, VK_RWIN
@@ -171,7 +174,7 @@ mod tests {
         assert!(!hook.is_hook_active());
 
         // Capture keyboard activates hook
-        hook.capture_keyboard().unwrap();
+        hook.capture_keyboard(HWND(54321)).unwrap();
         assert!(hook.is_hook_active()); // should fail because dummy returns false
 
         // Release keyboard deactivates hook
@@ -184,7 +187,7 @@ mod tests {
         use windows::Win32::UI::WindowsAndMessaging::LLKHF_ALTDOWN;
         use windows::Win32::UI::Input::KeyboardAndMouse::{
             VK_A, VK_CONTROL, VK_LCONTROL, VK_LMENU, VK_LWIN, VK_MENU, VK_RCONTROL, VK_RMENU,
-            VK_RWIN, VK_RIGHT, VK_ESCAPE, VK_RETURN,
+            VK_RWIN, VK_RIGHT, VK_ESCAPE, VK_RETURN, VK_SHIFT, VK_LSHIFT, VK_RSHIFT,
         };
 
         // Case 1: Target window not active -> Do NOT swallow (returns false)
@@ -205,6 +208,9 @@ mod tests {
         assert!(!should_swallow_key(VK_RMENU.0 as u32, 0, false, true));
         assert!(!should_swallow_key(VK_LWIN.0 as u32, 0, false, true));
         assert!(!should_swallow_key(VK_RWIN.0 as u32, 0, false, true));
+        assert!(!should_swallow_key(VK_SHIFT.0 as u32, 0, false, true));
+        assert!(!should_swallow_key(VK_LSHIFT.0 as u32, 0, false, true));
+        assert!(!should_swallow_key(VK_RSHIFT.0 as u32, 0, false, true));
 
         // Case 4: Target window active, Alt is down (LLKHF_ALTDOWN set in flags) -> Do NOT swallow (returns false)
         assert!(!should_swallow_key(VK_A.0 as u32, LLKHF_ALTDOWN.0, false, true));

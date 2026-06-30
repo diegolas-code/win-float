@@ -5,12 +5,18 @@
   - [x] Implement pure `should_swallow_key` function in `src/platform/hook.rs` to decide if keys should be swallowed.
   - [x] Write comprehensive unit tests for `should_swallow_key` verifying modifier keys, Ctrl/Alt combinations, active target window state, and general keys.
   - [x] Integrate `should_swallow_key` in `keyboard_hook_proc` to return `LRESULT(1)` for swallowed keys, blocking them from the active target window.
+  - [x] Defer releasing the keyboard hook on modal exit until all physical direction/commit keys are released to prevent rogue repeating key leaks.
+  - [x] Write unit test `test_controller_transparency_modal_deferred_unhook` to verify this behavior.
 - **Issues Found:**
   - Standard low-level keyboard hooks can block keyboard events system-wide if not carefully filtered.
   - User shortcuts like `Alt + Tab`, modifier keys, and `Ctrl` combinations must be preserved.
+  - **Bug:** The active target window handle was not passed to the input hook. The hook evaluated the foreground window against the message-only receiver window handle (`msg_hwnd`), which is never foreground. Consequently, `should_swallow` always returned `false`, and key inputs (like arrow keys) leaked through to the target window.
+  - **Bug:** Releasing the keyboard hook immediately on modal commit/abort while the user is still physically holding down direction or commit keys (Enter/Escape) causes those keys to repeat and get stuck inside the OS (e.g. leaking to the Alt+Tab app switcher).
 - **Solutions Applied:**
   - Configured `should_swallow_key` to fail-safe and return `false` (do not swallow) if the target window is not active, or if modifiers, Alt combinations, or Ctrl combinations are detected.
   - Integrated `GetForegroundWindow` and `GetKeyState` checks in the hook callback to safely determine active state and Ctrl key state.
+  - **Fix:** Modified the `InputHook` trait and `LiveInputHook`'s `capture_keyboard` method to accept `target_hwnd` from the controller. Renamed the hook's internal tracking field to distinguish between `receiver_hwnd` (destination of posted messages) and `target_hwnd` (the window being transparented). The hook now correctly compares the foreground window against the window being transparented.
+  - **Fix:** Added `exiting_modal` state to `AppController` and deferred the unhooking of the keyboard hook inside `Transition::Committed` and `Transition::Aborted` if keys are still physically held down. Released the hook on subsequent keyup events once the physical keys are fully released.
 - **Verification Proof:**
   - Output of `cargo test`:
     ```

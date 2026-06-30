@@ -170,6 +170,7 @@ where
     pub overlay_focus_states: HashMap<isize, bool>,             // target HWND -> is_focused
     pub movesize_targets: HashSet<isize>, // target HWNDs currently resizing/moving
     pub synchronous_window_moves: bool,
+    pub exiting_modal: bool,
 }
 
 impl<W, I, O, T> AppController<W, I, O, T>
@@ -220,6 +221,7 @@ where
             overlay_focus_states: HashMap::new(),
             movesize_targets: HashSet::new(),
             synchronous_window_moves: true,
+            exiting_modal: false,
         })
     }
 
@@ -396,7 +398,7 @@ where
                 let current_trans = current_trans.max(60);
 
                 let _ = self.state_machine.enter_modal(active, current_trans);
-                self.input_hook.capture_keyboard()?;
+                self.input_hook.capture_keyboard(active)?;
 
                 let rect = get_window_rect_helper(active)
                     .unwrap_or(crate::hud_layout::Rect::new(0, 0, 800, 600));
@@ -424,6 +426,7 @@ where
                 self.slider_velocity = 0.0;
                 self.last_physics_update = Some(Instant::now());
                 self.pressed_keys.clear();
+                self.exiting_modal = false;
                 unsafe {
                     SetTimer(overlay, 1, 10, None);
                 }
@@ -438,23 +441,34 @@ where
     }
 
     pub fn handle_key_input(&mut self, vk_code: u32, event_type: i32) -> Result<(), String> {
+        println!("[Win-Float] [Debug] handle_key_input: vk_code=0x{:X}, event_type={}, pressed_keys={:?}, exiting_modal={}", vk_code, event_type, self.pressed_keys, self.exiting_modal);
+        if event_type == 0 {
+            if !self.exiting_modal {
+                self.pressed_keys.insert(vk_code);
+            }
+        } else {
+            self.pressed_keys.remove(&vk_code);
+            if self.exiting_modal && self.pressed_keys.is_empty() {
+                self.input_hook.release_keyboard();
+                self.exiting_modal = false;
+            }
+        }
+
         let is_direction_key = matches!(
             vk_code,
             0x25 | 0x28 | 0xBD | 0x6D | 0x27 | 0x26 | 0xBB | 0x6B
         );
 
         if is_direction_key {
-            if event_type == 0 {
-                self.pressed_keys.insert(vk_code);
-            } else {
-                self.pressed_keys.remove(&vk_code);
-            }
             return Ok(());
         }
 
         // Non-direction key (e.g. Enter, Escape) -> commit
         if event_type == 0 {
-            self.pressed_keys.clear();
+            if self.exiting_modal {
+                return Ok(());
+            }
+
             if let Some(overlay) = self.hud_overlay {
                 unsafe {
                     let _ = KillTimer(overlay, 1);
@@ -607,13 +621,23 @@ where
                 target_hwnd,
                 final_percentage: _,
             } => {
-                self.input_hook.release_keyboard();
+                let keys_are_held = !self.pressed_keys.is_empty();
+
+                if keys_are_held {
+                    self.exiting_modal = true;
+                } else {
+                    self.input_hook.release_keyboard();
+                    self.exiting_modal = false;
+                }
+
                 if let Some(overlay) = self.hud_overlay {
                     unsafe {
                         let _ = KillTimer(overlay, 1);
                     }
                 }
-                self.pressed_keys.clear();
+                if !self.exiting_modal {
+                    self.pressed_keys.clear();
+                }
                 self.slider_velocity = 0.0;
                 self.last_physics_update = None;
                 if let Some(overlay) = self.hud_overlay.take() {
@@ -622,18 +646,28 @@ where
                 }
                 self.modal_target = None;
                 println!(
-                    "[Win-Float] [Info] Committing transparency changes for window HWND 0x{:X}. Released keyboard input hook. Destroyed HUD overlay.",
-                    target_hwnd.0
+                    "[Win-Float] [Info] Committing transparency changes for window HWND 0x{:X}. Released keyboard input hook: {}. Destroyed HUD overlay.",
+                    target_hwnd.0, !self.exiting_modal
                 );
             }
             Transition::Aborted => {
-                self.input_hook.release_keyboard();
+                let keys_are_held = !self.pressed_keys.is_empty();
+
+                if keys_are_held {
+                    self.exiting_modal = true;
+                } else {
+                    self.input_hook.release_keyboard();
+                    self.exiting_modal = false;
+                }
+
                 if let Some(overlay) = self.hud_overlay {
                     unsafe {
                         let _ = KillTimer(overlay, 1);
                     }
                 }
-                self.pressed_keys.clear();
+                if !self.exiting_modal {
+                    self.pressed_keys.clear();
+                }
                 self.slider_velocity = 0.0;
                 self.last_physics_update = None;
                 if let Some(target) = self.modal_target {
@@ -669,7 +703,8 @@ where
                 }
                 self.modal_target = None;
                 println!(
-                    "[Win-Float] [Info] Aborting transparency changes. Reverting adjustments. Released keyboard input hook. Destroyed HUD overlay."
+                    "[Win-Float] [Info] Aborted transparency changes. Released keyboard input hook: {}.",
+                    !self.exiting_modal
                 );
             }
             Transition::None => {}
@@ -1087,7 +1122,7 @@ mod tests {
 
     struct MockInputHook;
     impl InputHook for MockInputHook {
-        fn capture_keyboard(&self) -> Result<(), String> {
+        fn capture_keyboard(&self, _target_hwnd: HWND) -> Result<(), String> {
             Ok(())
         }
         fn release_keyboard(&self) {}
@@ -1103,6 +1138,46 @@ mod tests {
 
         assert!(controller.hud_overlay.is_none());
         assert!(controller.modal_target.is_none());
+    }
+
+    #[test]
+    fn test_controller_transparency_modal_deferred_unhook() {
+        let wm = MockWindowManager::default();
+        let hook = MockInputHook;
+        let om = MockOverlayManager::default();
+        let tracker = MockEventTracker::default();
+
+        let mut controller = AppController::new(wm, hook, om, tracker).unwrap();
+        let target = HWND(12345);
+        *controller.window_manager.active_window.lock().unwrap() = target;
+
+        controller.handle_hotkey(HOTKEY_MODAL_ID).unwrap();
+        assert!(controller.hud_overlay.is_some());
+
+        // Hold VK_LEFT
+        controller.handle_key_input(0x25, 0).unwrap(); // keydown
+        assert!(controller.pressed_keys.contains(&0x25));
+
+        // Press VK_RETURN to commit (keydown) while VK_LEFT is still held
+        controller.handle_key_input(0x0D, 0).unwrap(); // VK_RETURN keydown
+
+        // HUD overlay and modal target should be cleared immediately
+        assert!(controller.hud_overlay.is_none());
+        assert!(controller.modal_target.is_none());
+
+        // However, exiting_modal should be true because the left key is still held
+        assert!(controller.exiting_modal);
+
+        // Release VK_RETURN (keyup)
+        controller.handle_key_input(0x0D, 1).unwrap();
+        assert!(controller.exiting_modal); // Still true because VK_LEFT is still held
+
+        // Release VK_LEFT (keyup)
+        controller.handle_key_input(0x25, 1).unwrap();
+
+        // Now exiting_modal should be false, and pressed_keys should be empty
+        assert!(!controller.exiting_modal);
+        assert!(controller.pressed_keys.is_empty());
     }
 
     #[test]
@@ -1171,6 +1246,9 @@ mod tests {
         controller.handle_key_input(0x0D, 0).unwrap(); // VK_RETURN
         assert!(controller.hud_overlay.is_none());
         assert!(controller.modal_target.is_none());
+        // Release Enter key (key-up event_type=1) to finish deferred unhook
+        controller.handle_key_input(0x0D, 1).unwrap();
+        assert!(!controller.exiting_modal);
     }
 
     #[test]

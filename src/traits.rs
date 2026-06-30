@@ -24,7 +24,7 @@ pub trait WindowManager {
 }
 
 pub trait InputHook {
-    fn capture_keyboard(&self) -> Result<(), String>;
+    fn capture_keyboard(&self, target_hwnd: HWND) -> Result<(), String>;
     fn release_keyboard(&self);
 }
 
