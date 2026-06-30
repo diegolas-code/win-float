@@ -89,17 +89,14 @@ unsafe extern "system" fn keyboard_hook_proc(code: i32, wparam: WPARAM, lparam: 
     let is_keydown = wparam.0 == WM_KEYDOWN as usize || wparam.0 == WM_SYSKEYDOWN as usize;
     let is_keyup = wparam.0 == WM_KEYUP as usize || wparam.0 == WM_SYSKEYUP as usize;
 
+    let mut should_swallow = false;
+
     if is_keydown || is_keyup {
         let kbd_struct = unsafe { *(lparam.0 as *const KBDLLHOOKSTRUCT) };
         let vk_code = kbd_struct.vkCode;
         let event_type: isize = if is_keydown { 0 } else { 1 };
 
-        // Post key message to our HUD window.
-        // NOTE: We intentionally do NOT consume the keystroke (i.e. we do not return LRESULT(1)).
-        // Returning a non-zero value from a WH_KEYBOARD_LL hook without calling CallNextHookEx
-        // swallows the event system-wide, causing a complete keyboard freeze across all applications.
-        // The app receives keys via the PostMessageW side-channel above; the hook must always
-        // pass events down the chain.
+        // Post key message to our HUD window via the side-channel.
         let _ = unsafe {
             PostMessageW(
                 state.target_hwnd,
@@ -108,9 +105,29 @@ unsafe extern "system" fn keyboard_hook_proc(code: i32, wparam: WPARAM, lparam: 
                 LPARAM(event_type),
             )
         };
+
+        // Determine if we should swallow the key event to prevent it from reaching the target window.
+        // We only swallow keys if the active window is the target window, and it is not a modifier or Alt/Ctrl combination.
+        use windows::Win32::UI::WindowsAndMessaging::GetForegroundWindow;
+        use windows::Win32::UI::Input::KeyboardAndMouse::{GetKeyState, VK_CONTROL};
+
+        let fg_window = unsafe { GetForegroundWindow() };
+        let is_target_active = fg_window == state.target_hwnd;
+        let is_ctrl_down = unsafe { (GetKeyState(VK_CONTROL.0 as i32) as u16 & 0x8000) != 0 };
+
+        should_swallow = should_swallow_key(
+            vk_code,
+            kbd_struct.flags.0,
+            is_ctrl_down,
+            is_target_active,
+        );
     }
 
-    unsafe { CallNextHookEx(None, code, wparam, lparam) }
+    if should_swallow {
+        LRESULT(1)
+    } else {
+        unsafe { CallNextHookEx(None, code, wparam, lparam) }
+    }
 }
 
 pub fn should_swallow_key(

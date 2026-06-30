@@ -109,4 +109,7 @@ Follow the TDD cycle strictly: write failing test -> verify -> write minimal imp
   - Fix tracking in WindowEventTracker to support multiple overlays per target window.
   - Reposition/hide both pinned and HUD overlays during window moves, snaps, and movesize drag loops.
   - Verify with new unit test `test_pinned_transparency_accent_overlay_moves_correctly`.
-
+- [x] **Task 27: Suppress target window key inputs during transparency modal**
+  - Implement pure helper function `should_swallow_key` and tests.
+  - Integrate `should_swallow_key` in `keyboard_hook_proc` to swallow inputs.
+  - Verify with all 49 tests passing.
